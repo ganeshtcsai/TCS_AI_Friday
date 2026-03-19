@@ -25,3 +25,5 @@ Database (SQLite)
 To Execute --> node server.js
 
 To run Streamlit --> python -m streamlit run CodeCheckerAgent.py
+
+Checklist --> Use comments, Avoid long code, Use proper naming
