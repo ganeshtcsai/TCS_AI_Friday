@@ -1,0 +1,13 @@
+{
+  "patches": [
+    {
+      "id": 1773987410050,
+      "title": "Production Patch",
+      "severity": "High",
+      "cvss": "2",
+      "risk_score": 30,
+      "recommendation": "Defer",
+      "status": "Approved"
+    }
+  ]
+}

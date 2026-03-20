@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatchIQ — Endpoints</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav class="topbar">
+  <a href="index.html" class="logo"><span class="logo-ico">🛡️</span>PATCH<span>IQ</span></a>
+  <div class="nav">
+    <a href="index.html">Dashboard</a>
+    <a href="endpoints.html" class="active">Endpoints</a>
+    <a href="cve.html">CVE Intel</a>
+    <a href="itsm.html">ITSM Tickets</a>
+    <a href="advisor.html">AI Advisor</a>
+    <a href="pipeline.html">Pipeline</a>
+    <a href="compliance.html">Compliance</a>
+    <a href="policies.html">Policies</a>
+    <a href="reports.html">Reports</a>
+  </div>
+  <div class="topbar-right">
+    <div class="live-dot"></div>
+    <span class="clk" id="clk"></span>
+    <button class="btn btn-p btn-sm" onclick="openAddForm()">+ Add Endpoint</button>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="page-hdr">
+    <div class="page-hdr-left">
+      <div class="page-breadcrumb"><a href="index.html">Dashboard</a> › Endpoints</div>
+      <h1 class="page-title">Endpoint <em>Inventory</em></h1>
+      <p class="page-subtitle">All registered devices — Windows, Linux, macOS, Mobile, IoT · Click any row to view full details & edit</p>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="openAddForm()">➕ Add Endpoint</button>
+      <button class="btn btn-g btn-sm" onclick="exportEP()">⬇ Export CSV</button>
+      <button class="btn btn-g btn-sm" onclick="aiScan()">🤖 AI Risk Scan</button>
+    </div>
+  </div>
+
+  <!-- KPI mini row -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:24px" id="epKPIs"></div>
+
+  <!-- Search Bar -->
+  <div class="search-bar">
+    <input class="search-input" id="srch" placeholder="🔍  Search name, IP, user, OS, dept..." oninput="render()">
+    <select class="search-select" id="fOS" onchange="render()">
+      <option value="">All OS</option>
+      <option>Windows 11</option><option>Windows 10</option>
+      <option>Ubuntu 22.04</option><option>RHEL 9</option><option>Ubuntu 20.04</option>
+      <option>macOS 14</option><option>macOS 13</option>
+      <option>iOS 17.4</option><option>Android 14</option>
+      <option>VMware ESXi 8</option><option>Windows Server 2022</option><option>Embedded Linux</option>
+    </select>
+    <select class="search-select" id="fDept" onchange="render()">
+      <option value="">All Departments</option>
+      <option>Finance</option><option>HR</option><option>Engineering</option><option>IT</option>
+      <option>DevOps</option><option>Sales</option><option>Management</option><option>Legal</option>
+      <option>Design</option><option>Analytics</option><option>Security</option>
+    </select>
+    <select class="search-select" id="fStatus" onchange="render()">
+      <option value="">All Status</option>
+      <option>Patched</option><option>Pending</option><option>Critical</option>
+    </select>
+    <select class="search-select" id="fRisk" onchange="render()">
+      <option value="">All Risk</option>
+      <option value="high">High Risk (≥70)</option>
+      <option value="med">Medium (40–69)</option>
+      <option value="low">Low (&lt;40)</option>
+    </select>
+    <span id="epCount" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);white-space:nowrap"></span>
+  </div>
+
+  <!-- Table -->
+  <div class="card">
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th onclick="sortBy('name')">Device Name ↕</th>
+            <th onclick="sortBy('os')">OS ↕</th>
+            <th onclick="sortBy('dept')">Department ↕</th>
+            <th onclick="sortBy('user')">User</th>
+            <th>IP Address</th>
+            <th onclick="sortBy('risk')">Risk Score ↕</th>
+            <th onclick="sortBy('compliance')">Compliance ↕</th>
+            <th onclick="sortBy('status')">Status ↕</th>
+            <th onclick="sortBy('lastPatch')">Last Patched ↕</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="epBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ADD / EDIT MODAL ─── -->
+<div id="epModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:8000;justify-content:center;align-items:center;backdrop-filter:blur(4px)">
+  <div style="background:#091422;border:1px solid var(--borderHi);border-radius:18px;padding:30px;max-width:640px;width:92%;max-height:90vh;overflow-y:auto;position:relative">
+    <button onclick="closeEPModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--txt2);font-size:20px;cursor:pointer">✕</button>
+    <div id="modalMode" style="font-family:'Orbitron',sans-serif;font-size:17px;color:var(--c1);margin-bottom:24px"></div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label class="form-label">Device Name *</label>
+        <input class="form-input" id="f_name" placeholder="e.g. DESKTOP-WIN-016">
+      </div>
+      <div class="form-row">
+        <label class="form-label">IP Address</label>
+        <input class="form-input" id="f_ip" placeholder="e.g. 10.1.1.116">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Operating System *</label>
+        <select class="form-select" id="f_os">
+          <option>Windows 11</option><option>Windows 10</option>
+          <option>Windows Server 2022</option><option>Windows Server 2019</option>
+          <option>Ubuntu 22.04</option><option>RHEL 9</option><option>Ubuntu 20.04</option>
+          <option>macOS 14</option><option>macOS 13</option>
+          <option>iOS 17.4</option><option>Android 14</option>
+          <option>VMware ESXi 8</option><option>Embedded Linux</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Department *</label>
+        <select class="form-select" id="f_dept">
+          <option>Finance</option><option>HR</option><option>Engineering</option>
+          <option>IT</option><option>DevOps</option><option>Sales</option>
+          <option>Management</option><option>Legal</option><option>Design</option>
+          <option>Analytics</option><option>Security</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Assigned User</label>
+        <input class="form-input" id="f_user" placeholder="e.g. Ravi Shankar or System">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Status</label>
+        <select class="form-select" id="f_status">
+          <option>Patched</option><option>Pending</option><option>Critical</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Risk Score (0–100)</label>
+        <input class="form-input" id="f_risk" type="number" min="0" max="100" placeholder="e.g. 25">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Compliance % (0–100)</label>
+        <input class="form-input" id="f_comp" type="number" min="0" max="100" placeholder="e.g. 92">
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Last Patched Date</label>
+      <input class="form-input" id="f_date" type="date">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="saveEP()">💾 Save Endpoint</button>
+      <button class="btn btn-g" onclick="closeEPModal()">Cancel</button>
+      <button class="btn btn-r" id="delBtn" style="display:none" onclick="deleteEP()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── DETAIL DRAWER ─── -->
+<div id="epDrawer" style="display:none;position:fixed;top:0;right:0;bottom:0;width:420px;background:#091422;border-left:1px solid var(--borderHi);z-index:7000;overflow-y:auto;padding:24px;box-shadow:-10px 0 40px rgba(0,0,0,.6)">
+  <button onclick="closeDrawer()" style="float:right;background:none;border:none;color:var(--txt2);font-size:20px;cursor:pointer;margin-bottom:16px">✕</button>
+  <div id="drawerContent"></div>
+</div>
+
+<footer class="footer">🛡️ <span>PatchIQ Enterprise</span> · Endpoint Inventory</footer>
+
+<script src="shared.js"></script>
+<script>
+startClock('clk');
+
+let eps = DB.getOrDefault('endpoints', ENDPOINTS_DEFAULT);
+let sortKey = 'risk', sortDir = -1;
+let editId = null;
+
+// ── URL param handling ──
+const params = new URLSearchParams(location.search);
+const filterParam = params.get('filter');
+const idParam = params.get('id');
+const addParam = params.get('add');
+
+if (filterParam) document.getElementById('fStatus').value = filterParam;
+if (addParam) setTimeout(() => openAddForm(), 300);
+
+// ── KPIs ──
+function buildKPIs() {
+  const total = eps.length;
+  const patched = eps.filter(e => e.status === 'Patched').length;
+  const pending = eps.filter(e => e.status === 'Pending').length;
+  const critical = eps.filter(e => e.status === 'Critical').length;
+  const highRisk = eps.filter(e => e.risk >= 70).length;
+  document.getElementById('epKPIs').innerHTML = [
+    { ico: '🖥️', val: total, lbl: 'Total Endpoints', col: 'var(--c1)' },
+    { ico: '✅', val: patched, lbl: 'Patched', col: 'var(--c2)' },
+    { ico: '⏳', val: pending, lbl: 'Pending Patch', col: 'var(--c5)' },
+    { ico: '🔴', val: critical, lbl: 'Critical Risk', col: 'var(--c3)' },
+    { ico: '⚠️', val: highRisk, lbl: 'High Risk (≥70)', col: 'var(--c4)' },
+  ].map(k => `<div class="kpi-card" style="padding:16px;text-align:center">
+    <span style="font-size:24px">${k.ico}</span>
+    <div style="font-family:'Orbitron',monospace;font-size:22px;font-weight:700;color:${k.col}">${k.val}</div>
+    <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px">${k.lbl}</div>
+  </div>`).join('');
+}
+buildKPIs();
+
+// ── Render table ──
+function render() {
+  const q = document.getElementById('srch').value.toLowerCase();
+  const fOS = document.getElementById('fOS').value;
+  const fDept = document.getElementById('fDept').value;
+  const fSt = document.getElementById('fStatus').value;
+  const fRisk = document.getElementById('fRisk').value;
+
+  let data = eps.filter(e => {
+    const mq = !q || e.name.toLowerCase().includes(q) || (e.ip||'').includes(q) || e.user.toLowerCase().includes(q) || e.os.toLowerCase().includes(q) || e.dept.toLowerCase().includes(q);
+    const mOS = !fOS || e.os === fOS;
+    const mD = !fDept || e.dept === fDept;
+    const mSt = !fSt || e.status === fSt;
+    const mR = !fRisk || (fRisk === 'high' ? e.risk >= 70 : fRisk === 'med' ? e.risk >= 40 && e.risk < 70 : e.risk < 40);
+    return mq && mOS && mD && mSt && mR;
+  });
+
+  data.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    return (av > bv ? 1 : -1) * sortDir;
+  });
+
+  document.getElementById('epCount').textContent = `${data.length} of ${eps.length} endpoints`;
+  document.getElementById('epBody').innerHTML = data.map(e => `
+    <tr class="row-link" onclick="openDrawer('${e.id}')">
+      <td>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--c1)">${e.name}</div>
+        <div style="font-size:10px;color:var(--txt3)">${e.id}</div>
+      </td>
+      <td style="font-size:12px">${e.os}</td>
+      <td>${e.dept}</td>
+      <td style="font-size:12px">${e.user}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt2)">${e.ip || '—'}</td>
+      <td>
+        <div class="risk-bar">
+          <span style="color:${riskColor(e.risk)};font-family:'Orbitron',monospace;font-size:13px;font-weight:700;min-width:28px">${e.risk}</span>
+          <div class="risk-track"><div class="risk-fill" style="width:${e.risk}%;background:${riskColor(e.risk)}"></div></div>
+        </div>
+      </td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${e.compliance>=90?'var(--c2)':e.compliance>=70?'var(--c5)':'var(--c3)'}">${e.compliance}%</td>
+      <td><span class="badge b-${e.status.toLowerCase()}">${e.status}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt2)">${e.lastPatch}</td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn btn-g btn-xs" onclick="openEdit('${e.id}')">✏️ Edit</button>
+      </td>
+    </tr>`).join('');
+
+  if (data.length === 0) document.getElementById('epBody').innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--txt3);padding:30px;font-family:\'JetBrains Mono\',monospace">No endpoints match your filters</td></tr>';
+}
+
+function sortBy(key) { sortDir = sortKey === key ? -sortDir : -1; sortKey = key; render(); }
+
+// ── Drawer ──
+function openDrawer(id) {
+  const e = eps.find(x => x.id === id);
+  if (!e) return;
+  const cves = DB.getOrDefault('cves', CVE_DEFAULT);
+  document.getElementById('drawerContent').innerHTML = `
+    <div style="font-family:'Orbitron',sans-serif;font-size:16px;color:var(--c1);margin-bottom:4px">${e.name}</div>
+    <div style="font-size:12px;color:var(--txt3);margin-bottom:20px;font-family:'JetBrains Mono',monospace">${e.id} · ${e.ip || 'No IP'}</div>
+
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-family:'Orbitron',monospace;font-size:48px;font-weight:900;color:${riskColor(e.risk)};text-shadow:0 0 20px ${riskColor(e.risk)}66">${e.risk}</div>
+      <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px">AI Risk Score</div>
+      <span class="badge b-${e.status.toLowerCase()}" style="margin-top:8px;display:inline-block">${e.status}</span>
+    </div>
+
+    <div class="info-row"><span class="info-k">OS</span><span class="info-v">${e.os}</span></div>
+    <div class="info-row"><span class="info-k">Department</span><span class="info-v">${e.dept}</span></div>
+    <div class="info-row"><span class="info-k">Assigned User</span><span class="info-v">${e.user}</span></div>
+    <div class="info-row"><span class="info-k">IP Address</span><span class="info-v">${e.ip || '—'}</span></div>
+    <div class="info-row"><span class="info-k">Last Patched</span><span class="info-v">${e.lastPatch}</span></div>
+    <div class="info-row"><span class="info-k">Compliance</span><span class="info-v" style="color:${e.compliance>=90?'var(--c2)':e.compliance>=70?'var(--c5)':'var(--c3)'}">${e.compliance}%</span></div>
+
+    <div style="margin-top:20px">
+      <div style="font-size:11px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-family:'JetBrains Mono',monospace">Applicable CVEs</div>
+      ${cves.filter(c => c.platform === 'Windows' && e.os.includes('Windows') || c.platform === 'Linux' && (e.os.includes('Ubuntu')||e.os.includes('RHEL')) || c.platform === 'Mobile' && (e.os.includes('iOS')||e.os.includes('Android')) || c.platform === 'Cross-Platform').slice(0,4).map(c => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(0,245,255,.06);font-size:12px">
+          <span style="color:var(--c1);font-family:'JetBrains Mono',monospace">${c.id}</span>
+          <span class="badge b-${c.sev.toLowerCase()}">${c.sev}</span>
+        </div>`).join('') || '<p style="color:var(--txt3);font-size:12px">No applicable CVEs found</p>'}
+    </div>
+
+    <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-p btn-sm" onclick="closeDrawer();openEdit('${e.id}')">✏️ Edit</button>
+      <button class="btn btn-g btn-sm" onclick="closeDrawer();patchNow('${e.id}')">🚀 Patch Now</button>
+      <button class="btn btn-r btn-sm" onclick="closeDrawer();deleteEPById('${e.id}')">🗑 Delete</button>
+    </div>`;
+  document.getElementById('epDrawer').style.display = 'block';
+}
+function closeDrawer() { document.getElementById('epDrawer').style.display = 'none'; }
+
+// ── Add/Edit Form ──
+function openAddForm() {
+  editId = null;
+  document.getElementById('modalMode').textContent = '➕ Add New Endpoint';
+  ['name','ip','user'].forEach(f => document.getElementById('f_'+f).value = '');
+  document.getElementById('f_os').value = 'Windows 11';
+  document.getElementById('f_dept').value = 'Finance';
+  document.getElementById('f_status').value = 'Pending';
+  document.getElementById('f_risk').value = '';
+  document.getElementById('f_comp').value = '';
+  document.getElementById('f_date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('delBtn').style.display = 'none';
+  document.getElementById('epModal').style.display = 'flex';
+}
+function openEdit(id) {
+  const e = eps.find(x => x.id === id);
+  if (!e) return;
+  editId = id;
+  document.getElementById('modalMode').textContent = '✏️ Edit Endpoint — ' + e.name;
+  document.getElementById('f_name').value = e.name;
+  document.getElementById('f_ip').value = e.ip || '';
+  document.getElementById('f_os').value = e.os;
+  document.getElementById('f_dept').value = e.dept;
+  document.getElementById('f_user').value = e.user;
+  document.getElementById('f_status').value = e.status;
+  document.getElementById('f_risk').value = e.risk;
+  document.getElementById('f_comp').value = e.compliance;
+  document.getElementById('f_date').value = e.lastPatch;
+  document.getElementById('delBtn').style.display = 'inline-flex';
+  document.getElementById('epModal').style.display = 'flex';
+}
+function closeEPModal() { document.getElementById('epModal').style.display = 'none'; }
+function saveEP() {
+  const name = document.getElementById('f_name').value.trim();
+  if (!name) { showToast('Device name is required!', 'danger'); return; }
+  const obj = {
+    id: editId || 'EP-' + String(eps.length + 1).padStart(3, '0'),
+    name, ip: document.getElementById('f_ip').value,
+    os: document.getElementById('f_os').value,
+    dept: document.getElementById('f_dept').value,
+    user: document.getElementById('f_user').value || 'System',
+    status: document.getElementById('f_status').value,
+    risk: parseInt(document.getElementById('f_risk').value) || 20,
+    compliance: parseInt(document.getElementById('f_comp').value) || 80,
+    lastPatch: document.getElementById('f_date').value,
+  };
+  if (editId) { eps = eps.map(e => e.id === editId ? obj : e); showToast('✅ Endpoint updated!', 'success'); }
+  else { eps.push(obj); showToast('✅ Endpoint added!', 'success'); }
+  DB.set('endpoints', eps);
+  closeEPModal(); buildKPIs(); render();
+}
+function deleteEP() {
+  if (!editId) return;
+  if (!confirm('Delete this endpoint?')) return;
+  deleteEPById(editId);
+  closeEPModal();
+}
+function deleteEPById(id) {
+  eps = eps.filter(e => e.id !== id);
+  DB.set('endpoints', eps);
+  showToast('🗑 Endpoint removed', 'warning');
+  buildKPIs(); render();
+}
+function patchNow(id) {
+  const e = eps.find(x => x.id === id);
+  if (!e) return;
+  showToast(`🚀 Patch job queued for ${e.name}`, 'info');
+  setTimeout(() => { e.status = 'Patched'; e.lastPatch = new Date().toISOString().split('T')[0]; e.risk = Math.max(5, e.risk - 30); DB.set('endpoints', eps); render(); showToast(`✅ ${e.name} patched successfully!`, 'success'); }, 2000);
+}
+function exportEP() {
+  const rows = [['ID','Name','OS','Department','User','IP','Status','Risk','Compliance','Last Patched'], ...eps.map(e => [e.id,e.name,e.os,e.dept,e.user,e.ip||'',e.status,e.risk,e.compliance+'%',e.lastPatch])];
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(rows.map(r => r.join(',')).join('\n'));
+  a.download = 'PatchIQ_Endpoints.csv'; a.click();
+}
+function aiScan() {
+  showToast('🤖 AI scanning all endpoints for vulnerabilities...', 'info');
+  setTimeout(() => { showToast('⚠️ 3 endpoints flagged as high-risk!', 'warning'); }, 2500);
+}
+
+// ── Init ──
+if (idParam) setTimeout(() => openDrawer(idParam), 200);
+render();
+</script>
+</body>
+</html>

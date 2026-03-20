@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatchIQ — ITSM Tickets</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav class="topbar">
+  <a href="index.html" class="logo"><span class="logo-ico">🛡️</span>PATCH<span>IQ</span></a>
+  <div class="nav">
+    <a href="index.html">Dashboard</a><a href="endpoints.html">Endpoints</a>
+    <a href="cve.html">CVE Intel</a><a href="itsm.html" class="active">ITSM Tickets</a>
+    <a href="advisor.html">AI Advisor</a><a href="pipeline.html">Pipeline</a>
+    <a href="compliance.html">Compliance</a><a href="policies.html">Policies</a><a href="reports.html">Reports</a>
+  </div>
+  <div class="topbar-right">
+    <div class="live-dot"></div>
+    <span class="clk" id="clk"></span>
+    <button class="btn btn-p btn-sm" onclick="openAdd()">+ Create Ticket</button>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="page-hdr">
+    <div class="page-hdr-left">
+      <div class="page-breadcrumb"><a href="index.html">Dashboard</a> › ITSM Tickets</div>
+      <h1 class="page-title">ITSM <em>Ticket</em> Management</h1>
+      <p class="page-subtitle">AI-generated & manually created patch tickets · Click any ticket to view, update, add notes</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="openAdd()">➕ Create Ticket</button>
+      <button class="btn btn-g btn-sm" onclick="autoCreate()">🤖 AI Auto-Create</button>
+      <button class="btn btn-g btn-sm" onclick="exportTkts()">⬇ Export</button>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:24px" id="tktKPIs"></div>
+
+  <!-- Tabs + Search -->
+  <div class="tabs" id="tabRow"></div>
+  <div class="search-bar" style="margin-bottom:16px">
+    <input class="search-input" id="srch" placeholder="🔍  Search ticket ID, CVE, title..." oninput="render()">
+    <select class="search-select" id="fSev" onchange="render()">
+      <option value="">All Severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option>
+    </select>
+    <select class="search-select" id="fAssign" onchange="render()">
+      <option value="">All Assignees</option><option>AI Engine</option><option>Unassigned</option>
+    </select>
+    <span id="tktCount" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3)"></span>
+  </div>
+
+  <!-- Table view -->
+  <div class="card">
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th onclick="srt('id')">Ticket ID ↕</th>
+          <th>Title</th>
+          <th onclick="srt('sev')">Severity ↕</th>
+          <th onclick="srt('status')">Status ↕</th>
+          <th onclick="srt('progress')">Progress ↕</th>
+          <th>Ring</th>
+          <th onclick="srt('devices')">Devices ↕</th>
+          <th>Assignee</th>
+          <th onclick="srt('created')">Created ↕</th>
+          <th>Actions</th>
+        </tr></thead>
+        <tbody id="tktBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── TICKET MODAL ── -->
+<div id="tktModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:8000;justify-content:center;align-items:flex-start;padding-top:60px;backdrop-filter:blur(4px);overflow-y:auto">
+  <div style="background:#091422;border:1px solid var(--borderHi);border-radius:18px;padding:30px;max-width:700px;width:94%;margin-bottom:40px;position:relative">
+    <button onclick="closeMod()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--txt2);font-size:20px;cursor:pointer">✕</button>
+    <div id="modTitle" style="font-family:'Orbitron',sans-serif;font-size:17px;color:var(--c1);margin-bottom:22px"></div>
+    <div id="modContent"></div>
+  </div>
+</div>
+
+<footer class="footer">🛡️ <span>PatchIQ Enterprise</span> · ITSM Ticket Management</footer>
+
+<script src="shared.js"></script>
+<script>
+startClock('clk');
+let tkts = DB.getOrDefault('tickets', TICKETS_DEFAULT);
+let sKey='id', sDir=-1, activeTab='all', editId=null;
+const params = new URLSearchParams(location.search);
+if (params.get('filter')) activeTab = params.get('filter').toLowerCase();
+const idParam = params.get('id');
+const addParam = params.get('add');
+
+// ── Tabs ──
+const TABS = ['all','critical','deploying','pending','approved','closed','deferred'];
+function buildTabs() {
+  document.getElementById('tabRow').innerHTML = TABS.map(t=>`
+    <button class="tab-btn ${activeTab===t?'active':''}" onclick="switchTab('${t}')">${t==='all'?'All Tickets':t.charAt(0).toUpperCase()+t.slice(1)}</button>
+  `).join('');
+}
+function switchTab(t) { activeTab=t; buildTabs(); render(); }
+buildTabs();
+
+// ── KPIs ──
+function buildKPIs() {
+  const stats = { Deploying:0, Approved:0, Pending:0, Closed:0, Deferred:0, CRITICAL:0 };
+  tkts.forEach(t => { if(stats[t.status]!==undefined) stats[t.status]++; if(t.sev==='CRITICAL') stats.CRITICAL++; });
+  document.getElementById('tktKPIs').innerHTML = [
+    {ico:'📋',val:tkts.length,lbl:'Total Tickets',col:'var(--c1)'},
+    {ico:'⚡',val:stats.Deploying,lbl:'Deploying',col:'var(--c1)'},
+    {ico:'✅',val:stats.Approved,lbl:'Approved',col:'var(--c2)'},
+    {ico:'⏳',val:stats.Pending,lbl:'Pending',col:'var(--c5)'},
+    {ico:'🔴',val:stats.CRITICAL,lbl:'Critical',col:'var(--c3)'},
+    {ico:'🏁',val:stats.Closed,lbl:'Closed',col:'var(--c2)'},
+  ].map(k=>`<div class="kpi-card" style="padding:16px;text-align:center" onclick="switchTab('${k.lbl.toLowerCase().replace(' ','')}')">
+    <span style="font-size:22px">${k.ico}</span>
+    <div style="font-family:'Orbitron',monospace;font-size:22px;font-weight:700;color:${k.col}">${k.val}</div>
+    <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px">${k.lbl}</div>
+  </div>`).join('');
+}
+buildKPIs();
+
+// ── Render ──
+function render() {
+  const q = document.getElementById('srch').value.toLowerCase();
+  const fS = document.getElementById('fSev').value;
+  const fA = document.getElementById('fAssign').value;
+  let data = tkts.filter(t => {
+    const mq = !q || t.id.toLowerCase().includes(q) || t.title.toLowerCase().includes(q) || (t.cve||'').toLowerCase().includes(q);
+    const mS = !fS || t.sev===fS;
+    const mA = !fA || t.assignee===fA;
+    const mTab = activeTab==='all' || t.status.toLowerCase()===activeTab || (activeTab==='critical' && t.sev==='CRITICAL');
+    return mq && mS && mA && mTab;
+  });
+  data.sort((a,b)=>(a[sKey]>b[sKey]?1:-1)*sDir);
+  document.getElementById('tktCount').textContent = `${data.length} of ${tkts.length} tickets`;
+  const pgColor = s => s==='Closed'||s==='Approved'?'#00ff88':s==='Deploying'?'#00f5ff':'#ff8c00';
+  document.getElementById('tktBody').innerHTML = data.map(t=>`
+    <tr class="row-link" onclick="openDetail('${t.id}')">
+      <td>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--c1)">${t.id}</div>
+        ${t.auto?'<div style="font-size:9px;color:var(--c2);font-family:\'JetBrains Mono\',monospace">🤖 AI-Created</div>':''}
+      </td>
+      <td style="max-width:260px;font-size:13px">${t.title}</td>
+      <td><span class="badge b-${t.sev.toLowerCase()}">${t.sev}</span></td>
+      <td><span class="badge b-${t.status.toLowerCase()}">${t.status}</span></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="prog-track" style="width:72px"><div class="prog-fill" style="width:${t.progress}%;background:${pgColor(t.status)}"></div></div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px">${t.progress}%</span>
+        </div>
+      </td>
+      <td style="font-size:11px;color:var(--txt2)">${t.ring||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${(t.devices||0).toLocaleString()}</td>
+      <td style="font-size:11px;color:${t.auto?'var(--c2)':'var(--txt2)'}">${t.assignee||'Unassigned'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3)">${(t.created||'').split(' ')[0]}</td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn btn-g btn-xs" onclick="openEdit('${t.id}')">✏️</button>
+        ${t.status!=='Closed'?`<button class="btn btn-grn btn-xs" style="margin-left:3px" onclick="closeTicket('${t.id}')">✅</button>`:''}
+      </td>
+    </tr>`).join('');
+  if (!data.length) document.getElementById('tktBody').innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--txt3);padding:30px;font-family:\'JetBrains Mono\',monospace">No tickets match your filters</td></tr>';
+}
+function srt(k) { sDir = sKey===k?-sDir:-1; sKey=k; render(); }
+
+// ── Detail View ──
+function openDetail(id) {
+  const t = tkts.find(x=>x.id===id); if(!t) return;
+  editId = id;
+  document.getElementById('modTitle').innerHTML = `${t.id} <span class="badge b-${t.sev.toLowerCase()}" style="font-size:12px">${t.sev}</span>`;
+  document.getElementById('modContent').innerHTML = `
+    <div class="info-row"><span class="info-k">Title</span><span class="info-v" style="text-align:right">${t.title}</span></div>
+    <div class="info-row"><span class="info-k">Status</span><span class="info-v"><span class="badge b-${t.status.toLowerCase()}">${t.status}</span></span></div>
+    <div class="info-row"><span class="info-k">CVE Reference</span><span class="info-v"><a href="cve.html?id=${t.cve}" style="color:var(--c1)">${t.cve||'N/A'}</a></span></div>
+    <div class="info-row"><span class="info-k">Assignee</span><span class="info-v" style="color:${t.auto?'var(--c2)':'var(--txt)'}">${t.assignee} ${t.auto?'🤖':''}</span></div>
+    <div class="info-row"><span class="info-k">Deployment Ring</span><span class="info-v">${t.ring||'N/A'}</span></div>
+    <div class="info-row"><span class="info-k">Affected Devices</span><span class="info-v">${(t.devices||0).toLocaleString()}</span></div>
+    <div class="info-row"><span class="info-k">Created</span><span class="info-v">${t.created||'N/A'}</span></div>
+
+    <div style="margin:16px 0">
+      <div style="font-size:11px;color:var(--txt2);margin-bottom:8px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:1px">Deployment Progress</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="prog-track" style="flex:1;height:10px">
+          <div class="prog-fill" style="width:${t.progress}%;background:linear-gradient(90deg,var(--c1),var(--c2));height:10px"></div>
+        </div>
+        <span style="font-family:'Orbitron',monospace;font-size:18px;font-weight:700;color:var(--c1)">${t.progress}%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px">
+        <button class="btn btn-g btn-xs" onclick="updateProgress('${t.id}',-10)">◀ -10%</button>
+        <button class="btn btn-p btn-xs" onclick="updateProgress('${t.id}',10)">+10% ▶</button>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <label class="form-label">📝 Notes / Update</label>
+      <textarea class="form-textarea" id="tktNotes" style="min-height:70px">${t.notes||''}</textarea>
+    </div>
+
+    <div style="margin-top:16px">
+      <label class="form-label">Status Update</label>
+      <select class="form-select" id="tktStatus">
+        ${['Approved','Deploying','Pending','Deferred','Closed'].map(s=>`<option ${t.status===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn btn-p btn-sm" onclick="saveNotes('${t.id}')">💾 Save Update</button>
+      <button class="btn btn-grn btn-sm" onclick="closeTicket('${t.id}')">🏁 Close Ticket</button>
+      <button class="btn btn-g btn-sm" onclick="closeMod();openEdit('${t.id}')">✏️ Full Edit</button>
+      <button class="btn btn-r btn-sm" onclick="deleteTkt('${t.id}')">🗑 Delete</button>
+    </div>`;
+  document.getElementById('tktModal').style.display = 'flex';
+}
+
+function saveNotes(id) {
+  const notes = document.getElementById('tktNotes').value;
+  const status = document.getElementById('tktStatus').value;
+  tkts = tkts.map(t => t.id===id ? {...t, notes, status} : t);
+  DB.set('tickets', tkts);
+  showToast('✅ Ticket updated!', 'success');
+  buildKPIs(); render();
+}
+function updateProgress(id, delta) {
+  tkts = tkts.map(t => t.id===id ? {...t, progress: Math.max(0,Math.min(100,t.progress+delta))} : t);
+  DB.set('tickets', tkts);
+  openDetail(id);
+  render();
+}
+function closeTicket(id) {
+  tkts = tkts.map(t => t.id===id ? {...t, status:'Closed', progress:100} : t);
+  DB.set('tickets', tkts);
+  showToast('🏁 Ticket closed successfully!', 'success');
+  closeMod(); buildKPIs(); render();
+}
+function deleteTkt(id) {
+  if (!confirm('Delete this ticket?')) return;
+  tkts = tkts.filter(t=>t.id!==id);
+  DB.set('tickets', tkts);
+  showToast('🗑 Ticket deleted','warning');
+  closeMod(); buildKPIs(); render();
+}
+
+// ── Add Ticket Form ──
+function openAdd() {
+  editId = null;
+  document.getElementById('modTitle').textContent = '➕ Create New Ticket';
+  const cves = DB.getOrDefault('cves', CVE_DEFAULT);
+  document.getElementById('modContent').innerHTML = `
+    <div class="form-row"><label class="form-label">Ticket Title *</label>
+      <input class="form-input" id="f_title" placeholder="e.g. Windows Kernel Patch — Critical"></div>
+    <div class="form-grid">
+      <div class="form-row"><label class="form-label">CVE Reference</label>
+        <select class="form-select" id="f_cve">
+          <option value="">None</option>
+          ${cves.map(c=>`<option value="${c.id}">${c.id} — ${c.prod}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Severity</label>
+        <select class="form-select" id="f_sev">
+          ${['CRITICAL','HIGH','MEDIUM','LOW'].map(s=>`<option>${s}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Status</label>
+        <select class="form-select" id="f_stat">
+          ${['Pending','Approved','Deploying','Deferred'].map(s=>`<option>${s}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Deployment Ring</label>
+        <select class="form-select" id="f_ring">
+          ${['Pilot','Early','Broad','Enterprise','All Rings','N/A'].map(r=>`<option>${r}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Affected Devices</label>
+        <input class="form-input" id="f_dev" type="number" placeholder="e.g. 5000"></div>
+      <div class="form-row"><label class="form-label">Assignee</label>
+        <select class="form-select" id="f_assign"><option>AI Engine</option><option>Unassigned</option></select></div>
+    </div>
+    <div class="form-row"><label class="form-label">Notes</label>
+      <textarea class="form-textarea" id="f_notes" placeholder="Additional context or instructions..."></textarea></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button class="btn btn-p" onclick="saveTkt()">💾 Create Ticket</button>
+      <button class="btn btn-g" onclick="closeMod()">Cancel</button>
+    </div>`;
+  document.getElementById('tktModal').style.display = 'flex';
+  if (params.get('cve')) setTimeout(()=>{ const sel=document.getElementById('f_cve'); if(sel) sel.value=params.get('cve'); },100);
+}
+function openEdit(id) {
+  const t = tkts.find(x=>x.id===id); if(!t) return;
+  editId = id;
+  document.getElementById('modTitle').textContent = '✏️ Edit — ' + id;
+  const cves = DB.getOrDefault('cves', CVE_DEFAULT);
+  document.getElementById('modContent').innerHTML = `
+    <div class="form-row"><label class="form-label">Title</label><input class="form-input" id="f_title" value="${t.title}"></div>
+    <div class="form-grid">
+      <div class="form-row"><label class="form-label">CVE Reference</label>
+        <select class="form-select" id="f_cve"><option value="">None</option>
+          ${cves.map(c=>`<option value="${c.id}" ${t.cve===c.id?'selected':''}>${c.id} — ${c.prod}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Severity</label>
+        <select class="form-select" id="f_sev">
+          ${['CRITICAL','HIGH','MEDIUM','LOW'].map(s=>`<option ${t.sev===s?'selected':''}>${s}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Status</label>
+        <select class="form-select" id="f_stat">
+          ${['Pending','Approved','Deploying','Deferred','Closed'].map(s=>`<option ${t.status===s?'selected':''}>${s}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Progress %</label>
+        <input class="form-input" id="f_prog" type="number" min="0" max="100" value="${t.progress}"></div>
+      <div class="form-row"><label class="form-label">Deployment Ring</label>
+        <select class="form-select" id="f_ring">
+          ${['Pilot','Early','Broad','Enterprise','All Rings','N/A'].map(r=>`<option ${t.ring===r?'selected':''}>${r}</option>`).join('')}
+        </select></div>
+      <div class="form-row"><label class="form-label">Affected Devices</label>
+        <input class="form-input" id="f_dev" type="number" value="${t.devices||0}"></div>
+    </div>
+    <div class="form-row"><label class="form-label">Notes</label>
+      <textarea class="form-textarea" id="f_notes">${t.notes||''}</textarea></div>
+    <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="saveTkt()">💾 Save</button>
+      <button class="btn btn-g" onclick="closeMod()">Cancel</button>
+      <button class="btn btn-r" onclick="deleteTkt('${id}')">🗑 Delete</button>
+    </div>`;
+  document.getElementById('tktModal').style.display = 'flex';
+}
+function saveTkt() {
+  const title = document.getElementById('f_title').value.trim();
+  if (!title) { showToast('Title is required!','danger'); return; }
+  const auto = document.getElementById('f_assign').value === 'AI Engine';
+  const obj = {
+    id: editId || 'INC-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-5),
+    title, cve: document.getElementById('f_cve').value,
+    sev: document.getElementById('f_sev').value,
+    status: document.getElementById('f_stat').value,
+    progress: parseInt(document.getElementById('f_prog')?document.getElementById('f_prog').value:0)||0,
+    ring: document.getElementById('f_ring').value,
+    devices: parseInt(document.getElementById('f_dev').value)||0,
+    assignee: document.getElementById('f_assign')?document.getElementById('f_assign').value:'AI Engine',
+    notes: document.getElementById('f_notes').value,
+    auto, created: editId ? tkts.find(t=>t.id===editId)?.created : new Date().toISOString().slice(0,16).replace('T',' '),
+  };
+  if (editId) { tkts = tkts.map(t=>t.id===editId?obj:t); showToast('✅ Ticket updated!','success'); }
+  else { tkts.unshift(obj); showToast('✅ Ticket created!','success'); }
+  DB.set('tickets', tkts);
+  closeMod(); buildKPIs(); render();
+}
+function autoCreate() {
+  const cves = DB.getOrDefault('cves', CVE_DEFAULT);
+  const urgent = cves.filter(c=>c.sev==='CRITICAL'&&c.status==='Pending').slice(0,1)[0];
+  if (!urgent) { showToast('No pending critical CVEs to ticket!','warning'); return; }
+  const obj = {
+    id: 'INC-AI-'+String(Date.now()).slice(-5), cve: urgent.id,
+    title: `[AI] ${urgent.prod} — ${urgent.sev} Patch`,
+    sev: urgent.sev, status: 'Approved', progress: 0,
+    assignee: 'AI Engine', ring: 'Pilot', devices: urgent.dev,
+    auto: true, created: new Date().toISOString().slice(0,16).replace('T',' '), notes: 'Auto-created by AI engine based on CVE risk score '+urgent.risk,
+  };
+  tkts.unshift(obj); DB.set('tickets', tkts);
+  showToast('🤖 AI auto-created ticket: '+obj.id,'success');
+  buildKPIs(); render();
+}
+function exportTkts() {
+  const rows=[['ID','Title','CVE','Severity','Status','Progress','Ring','Devices','Assignee','Created'],...tkts.map(t=>[t.id,t.title,t.cve||'',t.sev,t.status,t.progress+'%',t.ring||'',t.devices||0,t.assignee,t.created||''])];
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.map(r=>r.join(',')).join('\n'));
+  a.download='PatchIQ_Tickets.csv'; a.click();
+}
+function closeMod() { document.getElementById('tktModal').style.display='none'; }
+
+if (idParam) setTimeout(()=>openDetail(idParam), 200);
+if (addParam) setTimeout(()=>openAdd(), 300);
+render();
+</script>
+</body>
+</html>

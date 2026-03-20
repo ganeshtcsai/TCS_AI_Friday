@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatchIQ — CVE Intelligence</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav class="topbar">
+  <a href="index.html" class="logo"><span class="logo-ico">🛡️</span>PATCH<span>IQ</span></a>
+  <div class="nav">
+    <a href="index.html">Dashboard</a><a href="endpoints.html">Endpoints</a>
+    <a href="cve.html" class="active">CVE Intel</a><a href="itsm.html">ITSM Tickets</a>
+    <a href="advisor.html">AI Advisor</a><a href="pipeline.html">Pipeline</a>
+    <a href="compliance.html">Compliance</a><a href="policies.html">Policies</a><a href="reports.html">Reports</a>
+  </div>
+  <div class="topbar-right">
+    <div class="live-dot"></div>
+    <span class="clk" id="clk"></span>
+    <button class="btn btn-p btn-sm" onclick="openAdd()">+ Add CVE</button>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="page-hdr">
+    <div class="page-hdr-left">
+      <div class="page-breadcrumb"><a href="index.html">Dashboard</a> › CVE Intel</div>
+      <h1 class="page-title">CVE <em>Intelligence</em> Engine</h1>
+      <p class="page-subtitle">AI-prioritized vulnerability database · Click any row for full detail · Add / edit CVEs manually</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="openAdd()">➕ Add CVE</button>
+      <button class="btn btn-g btn-sm" onclick="aiReprioritize()">🤖 AI Re-Prioritize</button>
+      <button class="btn btn-g btn-sm" onclick="exportCVE()">⬇ Export CSV</button>
+    </div>
+  </div>
+
+  <!-- KPI row -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:24px" id="cveKPIs"></div>
+
+  <!-- Filters -->
+  <div class="search-bar">
+    <input class="search-input" id="srch" placeholder="🔍  Search CVE ID, product, platform..." oninput="render()">
+    <select class="search-select" id="fSev" onchange="render()">
+      <option value="">All Severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option>
+    </select>
+    <select class="search-select" id="fPlat" onchange="render()">
+      <option value="">All Platforms</option><option>Windows</option><option>Linux</option><option>macOS</option><option>Mobile</option><option>Cross-Platform</option>
+    </select>
+    <select class="search-select" id="fSt" onchange="render()">
+      <option value="">All Status</option><option>Approved</option><option>Deploying</option><option>Pending</option><option>Deferred</option>
+    </select>
+    <select class="search-select" id="fKEV" onchange="render()">
+      <option value="">All</option><option value="1">CISA KEV Only</option>
+    </select>
+    <span id="cveCount" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--txt3);white-space:nowrap"></span>
+  </div>
+
+  <!-- Table -->
+  <div class="card">
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th onclick="srt('id')">CVE ID ↕</th>
+          <th onclick="srt('prod')">Product</th>
+          <th>Platform</th>
+          <th onclick="srt('sev')">Severity ↕</th>
+          <th onclick="srt('cvss')">CVSS ↕</th>
+          <th onclick="srt('epss')">EPSS % ↕</th>
+          <th onclick="srt('risk')">AI Risk ↕</th>
+          <th onclick="srt('dev')">Devices ↕</th>
+          <th>SLA</th>
+          <th>KEV</th>
+          <th onclick="srt('status')">Status ↕</th>
+          <th>Actions</th>
+        </tr></thead>
+        <tbody id="cveBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── CVE DETAIL / ADD / EDIT MODAL ── -->
+<div id="cveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:8000;justify-content:center;align-items:center;backdrop-filter:blur(4px)">
+  <div style="background:#091422;border:1px solid var(--borderHi);border-radius:18px;padding:30px;max-width:700px;width:94%;max-height:90vh;overflow-y:auto;position:relative">
+    <button onclick="closeMod()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--txt2);font-size:20px;cursor:pointer">✕</button>
+    <div id="modTitle" style="font-family:'Orbitron',sans-serif;font-size:17px;color:var(--c1);margin-bottom:22px"></div>
+    <div id="modContent"></div>
+  </div>
+</div>
+
+<footer class="footer">🛡️ <span>PatchIQ Enterprise</span> · CVE Intelligence Engine</footer>
+
+<script src="shared.js"></script>
+<script>
+startClock('clk');
+let cves = DB.getOrDefault('cves', CVE_DEFAULT);
+let sKey = 'risk', sDir = -1, editCVE = null;
+
+const params = new URLSearchParams(location.search);
+if (params.get('filter')) document.getElementById('fSev').value = params.get('filter');
+if (params.get('add')) setTimeout(() => openAdd(), 300);
+const idParam = params.get('id');
+
+// ── KPIs ──
+function buildKPIs() {
+  const sc = { CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0 };
+  cves.forEach(c => { if(sc[c.sev]!==undefined) sc[c.sev]++; });
+  const kev = cves.filter(c=>c.kev).length;
+  document.getElementById('cveKPIs').innerHTML = [
+    {ico:'🔴',val:sc.CRITICAL,lbl:'Critical',col:'var(--c3)'},
+    {ico:'🟠',val:sc.HIGH,lbl:'High',col:'var(--c4)'},
+    {ico:'🟡',val:sc.MEDIUM,lbl:'Medium',col:'var(--c5)'},
+    {ico:'🟢',val:sc.LOW,lbl:'Low',col:'var(--c2)'},
+    {ico:'📡',val:kev,lbl:'CISA KEV Active',col:'var(--c1)'},
+    {ico:'📦',val:cves.length,lbl:'Total CVEs',col:'var(--txt)'},
+  ].map(k=>`<div class="kpi-card" style="padding:16px;text-align:center">
+    <span style="font-size:22px">${k.ico}</span>
+    <div style="font-family:'Orbitron',monospace;font-size:22px;font-weight:700;color:${k.col}">${k.val}</div>
+    <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px">${k.lbl}</div>
+  </div>`).join('');
+}
+buildKPIs();
+
+// ── Render ──
+function render() {
+  const q = document.getElementById('srch').value.toLowerCase();
+  const fS = document.getElementById('fSev').value;
+  const fP = document.getElementById('fPlat').value;
+  const fSt = document.getElementById('fSt').value;
+  const fK = document.getElementById('fKEV').value;
+  let data = cves.filter(c=>{
+    const mq = !q || c.id.toLowerCase().includes(q) || c.prod.toLowerCase().includes(q) || c.platform.toLowerCase().includes(q);
+    return mq && (!fS||c.sev===fS) && (!fP||c.platform===fP) && (!fSt||c.status===fSt) && (!fK||c.kev);
+  });
+  data.sort((a,b)=>(a[sKey]>b[sKey]?1:-1)*sDir);
+  document.getElementById('cveCount').textContent = `${data.length} of ${cves.length} CVEs`;
+  document.getElementById('cveBody').innerHTML = data.map(c=>`
+    <tr class="row-link" onclick="openDetail('${c.id}')">
+      <td style="color:var(--c1);font-family:'JetBrains Mono',monospace;font-size:11px">${c.id}</td>
+      <td style="font-size:12px">${c.prod}</td>
+      <td style="font-size:11px;color:var(--txt2)">${c.platform}</td>
+      <td><span class="badge b-${c.sev.toLowerCase()}">${c.sev}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace;color:${riskColor(c.cvss*10)}">${c.cvss}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${c.epss}%</td>
+      <td>
+        <div class="risk-bar">
+          <span style="color:${riskColor(c.risk)};font-family:'Orbitron',monospace;font-size:13px;font-weight:700">${c.risk}</span>
+          <div class="risk-track"><div class="risk-fill" style="width:${c.risk}%;background:${riskColor(c.risk)}"></div></div>
+        </div>
+      </td>
+      <td style="font-family:'JetBrains Mono',monospace">${c.dev.toLocaleString()}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${c.sla==='<4h'?'var(--c3)':c.sla==='48h'?'var(--c4)':'var(--c5)'}">${c.sla}</td>
+      <td style="text-align:center">${c.kev?'<span title="CISA KEV Active" style="color:var(--c3);font-size:16px">🔥</span>':'—'}</td>
+      <td><span class="badge b-${c.status.toLowerCase()}">${c.status}</span></td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn btn-g btn-xs" onclick="openEdit('${c.id}')">✏️</button>
+        <button class="btn btn-p btn-xs" style="margin-left:4px" onclick="approveCVE('${c.id}')">✅</button>
+      </td>
+    </tr>`).join('');
+  if (!data.length) document.getElementById('cveBody').innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--txt3);padding:30px;font-family:\'JetBrains Mono\',monospace">No CVEs match your filters</td></tr>';
+}
+function srt(k) { sDir = sKey===k?-sDir:-1; sKey=k; render(); }
+
+// ── Detail Modal ──
+function openDetail(id) {
+  const c = cves.find(x=>x.id===id); if(!c) return;
+  document.getElementById('modTitle').innerHTML = `${c.id} — ${c.prod}`;
+  document.getElementById('modContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;text-align:center">
+      ${ringBlock(c.risk, riskColor(c.risk), 'AI Risk Score')}
+      ${ringBlock(c.epss, c.epss>60?'#ff2d55':c.epss>30?'#ff8c00':'#00ff88', 'EPSS %')}
+      ${ringBlock(c.cvss*10, riskColor(c.cvss*10), 'CVSS ×10')}
+    </div>
+    <div class="info-row"><span class="info-k">Severity</span><span class="info-v"><span class="badge b-${c.sev.toLowerCase()}">${c.sev}</span></span></div>
+    <div class="info-row"><span class="info-k">Platform</span><span class="info-v">${c.platform}</span></div>
+    <div class="info-row"><span class="info-k">Affected Devices</span><span class="info-v">${c.dev.toLocaleString()}</span></div>
+    <div class="info-row"><span class="info-k">SLA Target</span><span class="info-v" style="color:${c.sla==='<4h'?'var(--c3)':'var(--c4)'}">${c.sla}</span></div>
+    <div class="info-row"><span class="info-k">Published</span><span class="info-v">${c.published||'N/A'}</span></div>
+    <div class="info-row"><span class="info-k">CISA KEV</span><span class="info-v">${c.kev?'<span style="color:var(--c3)">🔥 YES — Actively Exploited</span>':'No'}</span></div>
+    <div class="info-row"><span class="info-k">AI Decision</span><span class="info-v"><span class="badge ${c.decision==='Auto-Approve'?'b-approved':'b-deferred'}">${c.decision}</span></span></div>
+    <div class="info-row"><span class="info-k">Status</span><span class="info-v"><span class="badge b-${c.status.toLowerCase()}">${c.status}</span></span></div>
+    <div style="background:rgba(0,0,0,.4);border-left:3px solid var(--c1);padding:14px 16px;border-radius:0 8px 8px 0;margin:16px 0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--txt2);line-height:1.8">
+      <strong style="color:var(--c1)">📋 Description:</strong><br>${c.description||'No description available.'}
+    </div>
+    <div style="background:rgba(0,0,0,.4);border-left:3px solid var(--c2);padding:14px 16px;border-radius:0 8px 8px 0;margin-bottom:20px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--txt2);line-height:1.8">
+      <strong style="color:var(--c2)">🤖 AI Reasoning:</strong><br>
+      ${c.risk>=90?`CVSS ${c.cvss} Critical with EPSS ${c.epss}% exploitation probability. ${c.kev?'CISA KEV listed — confirmed active exploitation in wild. ':''}${c.dev.toLocaleString()} devices at risk. Immediate auto-deploy recommended.`:c.risk>=70?`Elevated risk. EPSS ${c.epss}% indicates active exploitation is likely within 30 days. Deploy within ${c.sla} SLA window.`:`Moderate risk. EPSS ${c.epss}% below escalation threshold. Schedule in next patch cycle. Auto-escalate if EPSS exceeds 40%.`}
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-p btn-sm" onclick="approveCVE('${c.id}');closeMod()">✅ Approve & Deploy</button>
+      <button class="btn btn-o btn-sm" onclick="deferCVE('${c.id}');closeMod()">⏳ Defer 72h</button>
+      <button class="btn btn-g btn-sm" onclick="closeMod();openEdit('${c.id}')">✏️ Edit</button>
+      <button class="btn btn-g btn-sm" onclick="closeMod();location.href='itsm.html?add=1&cve=${c.id}'">🎫 Create Ticket</button>
+      <button class="btn btn-r btn-sm" onclick="deleteCVE('${c.id}')">🗑 Delete</button>
+    </div>`;
+  document.getElementById('cveModal').style.display = 'flex';
+}
+
+function ringBlock(val, color, label) {
+  const r=34, circ=2*Math.PI*r, dash=circ*(Math.min(val,100)/100);
+  return `<div>
+    <svg width="90" height="90" viewBox="0 0 90 90" style="display:block;margin:0 auto">
+      <circle cx="45" cy="45" r="${r}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7"/>
+      <circle cx="45" cy="45" r="${r}" fill="none" stroke="${color}" stroke-width="7"
+        stroke-dasharray="${dash} ${circ-dash}" stroke-dashoffset="${circ/4}"
+        stroke-linecap="round" style="filter:drop-shadow(0 0 4px ${color})"/>
+      <text x="45" y="45" text-anchor="middle" dy=".35em" fill="${color}"
+        font-family="'Orbitron',monospace" font-size="14" font-weight="900">${Math.round(val)}</text>
+    </svg>
+    <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px;text-align:center">${label}</div>
+  </div>`;
+}
+
+// ── Add / Edit Form ──
+function openAdd() {
+  editCVE = null;
+  document.getElementById('modTitle').textContent = '➕ Add New CVE';
+  document.getElementById('modContent').innerHTML = cveForm({});
+  document.getElementById('cveModal').style.display = 'flex';
+}
+function openEdit(id) {
+  const c = cves.find(x=>x.id===id); if(!c) return;
+  editCVE = id;
+  document.getElementById('modTitle').textContent = '✏️ Edit CVE — ' + id;
+  document.getElementById('modContent').innerHTML = cveForm(c);
+  document.getElementById('cveModal').style.display = 'flex';
+}
+function cveForm(c) {
+  return `
+  <div class="form-grid">
+    <div class="form-row"><label class="form-label">CVE ID *</label><input class="form-input" id="f_id" value="${c.id||''}" placeholder="CVE-2025-XXXX"></div>
+    <div class="form-row"><label class="form-label">Product / Software *</label><input class="form-input" id="f_prod" value="${c.prod||''}" placeholder="e.g. Windows Kernel"></div>
+    <div class="form-row"><label class="form-label">Platform *</label>
+      <select class="form-select" id="f_plat">
+        ${['Windows','Linux','macOS','Mobile','Cross-Platform'].map(p=>`<option ${c.platform===p?'selected':''}>${p}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><label class="form-label">Severity *</label>
+      <select class="form-select" id="f_sev">
+        ${['CRITICAL','HIGH','MEDIUM','LOW'].map(s=>`<option ${c.sev===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><label class="form-label">CVSS Score (0–10)</label><input class="form-input" id="f_cvss" type="number" step="0.1" min="0" max="10" value="${c.cvss||''}"></div>
+    <div class="form-row"><label class="form-label">EPSS % (0–100)</label><input class="form-input" id="f_epss" type="number" min="0" max="100" value="${c.epss||''}"></div>
+    <div class="form-row"><label class="form-label">AI Risk Score (0–100)</label><input class="form-input" id="f_risk2" type="number" min="0" max="100" value="${c.risk||''}"></div>
+    <div class="form-row"><label class="form-label">Affected Devices</label><input class="form-input" id="f_dev" type="number" value="${c.dev||''}" placeholder="e.g. 5000"></div>
+    <div class="form-row"><label class="form-label">SLA Target</label>
+      <select class="form-select" id="f_sla">
+        ${['<4h','48h','7d','30d'].map(s=>`<option ${c.sla===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><label class="form-label">Status</label>
+      <select class="form-select" id="f_stat">
+        ${['Pending','Approved','Deploying','Deferred'].map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><label class="form-label">AI Decision</label>
+      <select class="form-select" id="f_dec">
+        <option ${c.decision==='Auto-Approve'?'selected':''}>Auto-Approve</option>
+        <option ${c.decision==='Defer'?'selected':''}>Defer</option>
+      </select>
+    </div>
+    <div class="form-row"><label class="form-label">Published Date</label><input class="form-input" id="f_pub" type="date" value="${c.published||new Date().toISOString().split('T')[0]}"></div>
+  </div>
+  <div class="form-row"><label class="form-label">CISA KEV (Actively Exploited)</label>
+    <select class="form-select" id="f_kev">
+      <option value="0" ${!c.kev?'selected':''}>No</option>
+      <option value="1" ${c.kev?'selected':''}>Yes — Listed in CISA KEV</option>
+    </select>
+  </div>
+  <div class="form-row"><label class="form-label">Description</label>
+    <textarea class="form-textarea" id="f_desc" style="min-height:80px">${c.description||''}</textarea>
+  </div>
+  <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
+    <button class="btn btn-p" onclick="saveCVE()">💾 Save CVE</button>
+    <button class="btn btn-g" onclick="closeMod()">Cancel</button>
+    ${editCVE?`<button class="btn btn-r" onclick="deleteCVE('${editCVE}')">🗑 Delete</button>`:''}
+  </div>`;
+}
+function saveCVE() {
+  const id = document.getElementById('f_id').value.trim();
+  const prod = document.getElementById('f_prod').value.trim();
+  if (!id||!prod) { showToast('CVE ID and Product are required!','danger'); return; }
+  const obj = {
+    id, prod, platform: document.getElementById('f_plat').value,
+    sev: document.getElementById('f_sev').value,
+    cvss: parseFloat(document.getElementById('f_cvss').value)||0,
+    epss: parseInt(document.getElementById('f_epss').value)||0,
+    risk: parseInt(document.getElementById('f_risk2').value)||0,
+    dev: parseInt(document.getElementById('f_dev').value)||0,
+    sla: document.getElementById('f_sla').value,
+    status: document.getElementById('f_stat').value,
+    decision: document.getElementById('f_dec').value,
+    published: document.getElementById('f_pub').value,
+    kev: document.getElementById('f_kev').value === '1',
+    description: document.getElementById('f_desc').value,
+  };
+  if (editCVE) { cves = cves.map(c=>c.id===editCVE?obj:c); showToast('✅ CVE updated!','success'); }
+  else { cves.push(obj); showToast('✅ CVE added!','success'); }
+  DB.set('cves', cves);
+  closeMod(); buildKPIs(); render();
+}
+function deleteCVE(id) {
+  if (!confirm('Delete '+id+'?')) return;
+  cves = cves.filter(c=>c.id!==id);
+  DB.set('cves', cves);
+  showToast('🗑 CVE removed','warning');
+  closeMod(); buildKPIs(); render();
+}
+function approveCVE(id) {
+  cves = cves.map(c=>c.id===id?{...c,status:'Approved',decision:'Auto-Approve'}:c);
+  DB.set('cves', cves); showToast('✅ CVE approved for deployment!','success'); render();
+}
+function deferCVE(id) {
+  cves = cves.map(c=>c.id===id?{...c,status:'Deferred',decision:'Defer'}:c);
+  DB.set('cves', cves); showToast('⏳ CVE deferred 72 hours','warning'); render();
+}
+function aiReprioritize() {
+  showToast('🤖 AI re-scoring all CVEs via EPSS + CVSS + Threat Intel...','info');
+  setTimeout(()=>showToast('✅ 3 CVEs escalated · 2 deferred · Scores updated','success'),2000);
+}
+function exportCVE() {
+  const rows=[['CVE ID','Product','Platform','Severity','CVSS','EPSS','AI Risk','Devices','SLA','Status','KEV'],...cves.map(c=>[c.id,c.prod,c.platform,c.sev,c.cvss,c.epss+'%',c.risk,c.dev,c.sla,c.status,c.kev?'YES':'NO'])];
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.map(r=>r.join(',')).join('\n'));
+  a.download='PatchIQ_CVEs.csv'; a.click();
+}
+function closeMod() { document.getElementById('cveModal').style.display='none'; }
+
+if (idParam) setTimeout(()=>openDetail(idParam), 200);
+render();
+</script>
+</body>
+</html>

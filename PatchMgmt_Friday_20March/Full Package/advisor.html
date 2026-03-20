@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatchIQ — AI Advisor</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav class="topbar">
+  <a href="index.html" class="logo"><span class="logo-ico">🛡️</span>PATCH<span>IQ</span></a>
+  <div class="nav">
+    <a href="index.html">Dashboard</a><a href="endpoints.html">Endpoints</a>
+    <a href="cve.html">CVE Intel</a><a href="itsm.html">ITSM Tickets</a>
+    <a href="advisor.html" class="active">AI Advisor</a><a href="pipeline.html">Pipeline</a>
+    <a href="compliance.html">Compliance</a><a href="policies.html">Policies</a><a href="reports.html">Reports</a>
+  </div>
+  <div class="topbar-right"><div class="live-dot"></div><span class="clk" id="clk"></span></div>
+</nav>
+<div class="page">
+  <div class="page-hdr">
+    <div class="page-hdr-left">
+      <div class="page-breadcrumb"><a href="index.html">Dashboard</a> › AI Advisor</div>
+      <h1 class="page-title">AI Patch <em>Intelligence</em> Advisor</h1>
+      <p class="page-subtitle">Select any CVE · AI evaluates risk, compatibility, and recommends action · You can override any decision</p>
+    </div>
+  </div>
+
+  <!-- CVE Selector -->
+  <div class="card" style="margin-bottom:22px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="width:54px;height:54px;background:linear-gradient(135deg,var(--c1),var(--c6));border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 0 20px rgba(0,245,255,.3);animation:iconPulse 3s ease-in-out infinite">🧠</div>
+      <div style="flex:1">
+        <div style="font-family:'Orbitron',sans-serif;font-size:16px;color:var(--c1)">PatchIQ Neural Advisor v3.2</div>
+        <div style="font-size:12px;color:var(--txt2)" id="advSubtitle">Select a CVE to evaluate</div>
+      </div>
+      <select id="cveSelect" onchange="evaluate()" style="background:var(--bg);color:var(--c1);border:1px solid var(--borderHi);border-radius:8px;padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;min-width:280px">
+        <option value="">— Select CVE to Evaluate —</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="advResult" style="display:none">
+    <!-- Metrics row -->
+    <div class="g3" style="margin-bottom:22px" id="advMetrics"></div>
+
+    <!-- Checklist + Reasoning -->
+    <div class="g2" style="margin-bottom:22px">
+      <div class="card" id="advChecklist"></div>
+      <div class="card" id="advReason"></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="card" style="margin-bottom:22px">
+      <div class="section-title">⚡ Actions</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-p" id="btnApprove" onclick="doAction('approve')">✅ AI Approve & Deploy</button>
+        <button class="btn btn-o" onclick="doAction('defer')">⏳ Defer 72 Hours</button>
+        <button class="btn btn-r" onclick="doAction('rollback')">⬅ Mark for Rollback</button>
+        <button class="btn btn-g" onclick="doAction('exception')">🔒 Request Exception</button>
+        <button class="btn btn-g" onclick="createTicket()">🎫 Create ITSM Ticket</button>
+      </div>
+      <div class="console" style="height:140px;margin-top:14px" id="advConsole"></div>
+    </div>
+  </div>
+
+  <!-- If no CVE selected -->
+  <div id="advEmpty" class="card" style="text-align:center;padding:40px">
+    <div style="font-size:48px;margin-bottom:12px">🧠</div>
+    <div style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--c1);margin-bottom:8px">Select a CVE above to begin AI evaluation</div>
+    <div style="color:var(--txt2);font-size:13px">The AI advisor analyzes CVSS, EPSS, CISA KEV status, device exposure, compatibility,<br>and business impact to recommend the optimal patch action.</div>
+    <a href="cve.html" class="btn btn-g" style="margin-top:20px">Browse CVE List →</a>
+  </div>
+</div>
+
+<footer class="footer">🛡️ <span>PatchIQ Enterprise</span> · AI Intelligence Advisor</footer>
+<script src="shared.js"></script>
+<script>
+startClock('clk');
+const cves = DB.getOrDefault('cves', CVE_DEFAULT);
+let currentCVE = null;
+let conLines = [];
+
+// Populate dropdown
+const sel = document.getElementById('cveSelect');
+cves.sort((a,b)=>b.risk-a.risk).forEach(c => {
+  const o = document.createElement('option');
+  o.value = c.id;
+  o.textContent = `${c.id} — ${c.prod} [CVSS ${c.cvss} | Risk ${c.risk}] ${c.kev?'🔥':''}`;
+  sel.appendChild(o);
+});
+
+function ring(val, color, label) {
+  const r=36, circ=2*Math.PI*r, dash=circ*(Math.min(val,100)/100);
+  return `<div style="text-align:center">
+    <svg width="96" height="96" viewBox="0 0 96 96" style="display:block;margin:0 auto">
+      <circle cx="48" cy="48" r="${r}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
+      <circle cx="48" cy="48" r="${r}" fill="none" stroke="${color}" stroke-width="8"
+        stroke-dasharray="${dash} ${circ-dash}" stroke-dashoffset="${circ/4}"
+        stroke-linecap="round" style="filter:drop-shadow(0 0 5px ${color})"/>
+      <text x="48" y="48" text-anchor="middle" dy=".35em" fill="${color}"
+        font-family="'Orbitron',monospace" font-size="15" font-weight="900">${Math.round(val)}</text>
+    </svg>
+    <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px">${label}</div>
+  </div>`;
+}
+
+function addCon(type, msg) {
+  const ts = new Date().toLocaleTimeString('en-GB',{hour12:false});
+  const cls = {sys:'csys',ai:'cai',warn:'cwarn',err:'cerr',ok:'cok'}[type]||'csys';
+  conLines.push(`<div class="cl"><span class="cts">[${ts}]</span> <span class="${cls}">${msg}</span></div>`);
+  const el = document.getElementById('advConsole');
+  el.innerHTML = conLines.join('') + '<div class="cl"><span class="cur">█</span></div>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function evaluate() {
+  const id = document.getElementById('cveSelect').value;
+  if (!id) { document.getElementById('advResult').style.display='none'; document.getElementById('advEmpty').style.display='block'; return; }
+  currentCVE = cves.find(c=>c.id===id);
+  if (!currentCVE) return;
+  const c = currentCVE;
+  document.getElementById('advResult').style.display='block';
+  document.getElementById('advEmpty').style.display='none';
+  document.getElementById('advSubtitle').textContent = `Evaluating: ${c.id} — ${c.prod}`;
+
+  // Metrics
+  const compat = Math.max(80, 100 - c.risk * 0.2);
+  document.getElementById('advMetrics').innerHTML = `
+    <div class="card" style="text-align:center">${ring(c.risk, riskColor(c.risk), 'AI Risk Score')}<div style="margin-top:8px;font-size:11px;color:var(--txt2)">Risk Score</div></div>
+    <div class="card" style="text-align:center">${ring(c.epss, c.epss>60?'#ff2d55':c.epss>30?'#ff8c00':'#00ff88', 'EPSS %')}<div style="margin-top:8px;font-size:11px;color:var(--txt2)">Exploit Probability</div></div>
+    <div class="card" style="text-align:center">${ring(compat, '#00ff88', 'Compatibility')}<div style="margin-top:8px;font-size:11px;color:var(--txt2)">Compat Score</div></div>`;
+
+  // Checklist
+  const checks = [
+    { l: 'CVSS Score ≥ 7.0', ok: c.cvss >= 7 },
+    { l: 'EPSS > 30% (Exploit Likely)', ok: c.epss >= 30 },
+    { l: 'Listed in CISA KEV', ok: c.kev },
+    { l: 'Vendor Patch Available', ok: c.status !== 'Deferred' },
+    { l: 'Devices Exposed > 100', ok: c.dev >= 100 },
+    { l: 'SLA Urgency: Critical', ok: c.sla === '<4h' },
+    { l: 'AI Risk Score ≥ 70', ok: c.risk >= 70 },
+    { l: 'Compatibility ≥ 90%', ok: compat >= 90 },
+  ];
+  document.getElementById('advChecklist').innerHTML = `
+    <div class="section-title">✅ AI Compliance Checklist</div>
+    ${checks.map(ch=>`<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid rgba(0,245,255,.05);font-size:13px">
+      <span style="color:${ch.ok?'var(--c2)':'var(--c3)'};font-size:15px">${ch.ok?'✅':'❌'}</span>
+      <span style="color:${ch.ok?'var(--txt)':'var(--txt2)'}">${ch.l}</span>
+    </div>`).join('')}
+    <div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:12px;color:var(--txt2)">Checks passed:</span>
+      <span style="font-family:'Orbitron',monospace;font-size:18px;font-weight:700;color:${checks.filter(x=>x.ok).length>=6?'var(--c2)':checks.filter(x=>x.ok).length>=4?'var(--c5)':'var(--c3)'}">${checks.filter(x=>x.ok).length}/${checks.length}</span>
+    </div>`;
+
+  // Reasoning
+  const passed = checks.filter(x=>x.ok).length;
+  const decision = c.risk>=80||c.kev?'AUTO-APPROVE':c.risk>=50?'SCHEDULE':' DEFER';
+  const decColor = decision==='AUTO-APPROVE'?'#00ff88':decision==='SCHEDULE'?'#ffd700':'#ff8c00';
+  document.getElementById('advReason').innerHTML = `
+    <div class="section-title">🤖 AI Reasoning & Recommendation</div>
+    <div style="text-align:center;margin:12px 0;padding:14px;background:rgba(0,0,0,.3);border-radius:10px">
+      <div style="font-family:'Orbitron',monospace;font-size:22px;font-weight:900;color:${decColor}">${decision}</div>
+      <div style="font-size:11px;color:var(--txt2);margin-top:4px">AI Recommendation</div>
+    </div>
+    <div style="background:rgba(0,0,0,.3);border-left:3px solid var(--c1);padding:14px 16px;border-radius:0 8px 8px 0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--txt2);line-height:1.9">
+      <strong style="color:var(--c1)">CVE:</strong> ${c.id} — ${c.prod}<br>
+      <strong style="color:var(--c1)">Platform:</strong> ${c.platform} · <strong style="color:var(--c1)">CVSS:</strong> ${c.cvss} · <strong style="color:var(--c1)">EPSS:</strong> ${c.epss}%<br>
+      <strong style="color:var(--c1)">Devices at Risk:</strong> ${c.dev.toLocaleString()} · <strong style="color:var(--c1)">SLA:</strong> ${c.sla}<br>
+      ${c.kev?'<strong style="color:var(--c3)">🔥 CISA KEV: Actively exploited in the wild. Immediate action required.</strong><br>':''}<br>
+      ${c.risk>=80?`High risk score (${c.risk}/100) with ${c.epss}% exploitation probability. ${c.kev?'Confirmed active exploitation.':''} ${c.dev.toLocaleString()} endpoints at risk. AI compatibility simulation: ${Math.round(compat)}% success rate. Recommend immediate auto-deploy via ring sequence.`:
+        c.risk>=50?`Moderate-high risk (${c.risk}/100). EPSS ${c.epss}% indicates exploitation within 30 days is possible. Schedule deployment in next maintenance window within ${c.sla}.`:
+        `Low risk score (${c.risk}/100). EPSS ${c.epss}% below escalation threshold. No CISA KEV listing. Defer to regular patch cycle and monitor EPSS for changes.`}
+    </div>
+    <div class="info-row" style="margin-top:12px"><span class="info-k">Description</span></div>
+    <div style="font-size:12px;color:var(--txt2);line-height:1.7;padding:10px;background:rgba(0,0,0,.2);border-radius:6px;margin-top:4px">${c.description||'No description available.'}</div>`;
+
+  // Boot console
+  conLines = [];
+  const seq = [
+    [0,'sys',`Loading CVE profile: ${c.id}...`],
+    [400,'sys',`CVSS: ${c.cvss} · EPSS: ${c.epss}% · Risk: ${c.risk}`],
+    [800,'ai',`NLP parsing: vendor advisory processed, ${checks.filter(x=>x.ok).length}/${checks.length} checks passed`],
+    [1200,c.kev?'err':'sys',c.kev?'🔥 CISA KEV confirmed — active exploitation detected!':'No CISA KEV listing found'],
+    [1600,'ai',`Compatibility simulation: ${Math.round(compat)}% success rate on pilot ring`],
+    [2000,decision==='AUTO-APPROVE'?'ok':'warn',`🤖 AI Decision: ${decision}`],
+  ];
+  seq.forEach(([t,type,msg])=>setTimeout(()=>addCon(type,msg),t));
+}
+
+function doAction(type) {
+  if (!currentCVE) { showToast('Please select a CVE first!','warning'); return; }
+  const c = currentCVE;
+  const actions = {
+    approve: {msg:'✅ Auto-approved for ring deployment', type:'ok', newStatus:'Approved'},
+    defer:   {msg:'⏳ Deferred 72 hours. EPSS monitoring active.', type:'warn', newStatus:'Deferred'},
+    rollback:{msg:'⬅ Rollback flag set. Self-healing initiated.', type:'err', newStatus:'Deferred'},
+    exception:{msg:'🔒 Exception request filed — awaiting CISO review.', type:'warn', newStatus:'Deferred'},
+  };
+  const a = actions[type];
+  addCon(a.type, `[USER ACTION] ${a.msg}`);
+  // Update CVE status in DB
+  const allCVEs = DB.getOrDefault('cves', CVE_DEFAULT);
+  const updated = allCVEs.map(cv=>cv.id===c.id?{...cv,status:a.newStatus}:cv);
+  DB.set('cves', updated);
+  showToast(a.msg, type==='approve'?'success':type==='rollback'?'danger':'warning');
+}
+function createTicket() {
+  if (!currentCVE) { showToast('Please select a CVE first!','warning'); return; }
+  location.href = `itsm.html?add=1&cve=${currentCVE.id}`;
+}
+</script>
+</body>
+</html>

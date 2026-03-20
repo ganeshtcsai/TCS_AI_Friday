@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatchIQ — Pipeline</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<nav class="topbar">
+  <a href="index.html" class="logo"><span class="logo-ico">🛡️</span>PATCH<span>IQ</span></a>
+  <div class="nav">
+    <a href="index.html">Dashboard</a><a href="endpoints.html">Endpoints</a>
+    <a href="cve.html">CVE Intel</a><a href="itsm.html">ITSM Tickets</a>
+    <a href="advisor.html">AI Advisor</a><a href="pipeline.html" class="active">Pipeline</a>
+    <a href="compliance.html">Compliance</a><a href="policies.html">Policies</a><a href="reports.html">Reports</a>
+  </div>
+  <div class="topbar-right"><div class="live-dot"></div><span class="clk" id="clk"></span></div>
+</nav>
+<div class="page">
+  <div class="page-hdr">
+    <div class="page-hdr-left">
+      <div class="page-breadcrumb"><a href="index.html">Dashboard</a> › Pipeline</div>
+      <h1 class="page-title">Patch <em>Pipeline</em> — E2E Flow</h1>
+      <p class="page-subtitle">End-to-end automated patch lifecycle · Simulate patch flows · Track ring deployment in real time</p>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-p btn-sm" onclick="simPatch()">▶ Simulate Patch</button>
+      <button class="btn btn-o btn-sm" onclick="simRollback()">⬅ Simulate Rollback</button>
+    </div>
+  </div>
+
+  <!-- Pipeline Steps -->
+  <div class="card" style="margin-bottom:22px;overflow-x:auto">
+    <div class="section-title">🔄 E2E Patch Pipeline — Click any step</div>
+    <div style="display:flex;align-items:flex-start;gap:0;min-width:860px;padding:10px 0" id="pipelineRow"></div>
+  </div>
+
+  <!-- Step Detail -->
+  <div class="card" style="margin-bottom:22px;display:none" id="stepDetail">
+    <div class="section-title" id="stepDetailTitle"></div>
+    <div id="stepDetailBody"></div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="section-title">🤖 AI Engine Console — Live</div>
+      <div class="console" id="pipeCon"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-p btn-sm" onclick="simPatch()">▶ Simulate Patch</button>
+        <button class="btn btn-o btn-sm" onclick="simRollback()">⬅ Simulate Rollback</button>
+        <button class="btn btn-g btn-sm" onclick="clearCon()">⬜ Clear</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">📋 Active Patch Jobs</div>
+      <div id="activeJobs"></div>
+    </div>
+  </div>
+</div>
+<footer class="footer">🛡️ <span>PatchIQ Enterprise</span> · Patch Pipeline</footer>
+<script src="shared.js"></script>
+<script>
+startClock('clk');
+const STEPS = [
+  {ico:'🔍',label:'CVE Detection',sub:'TVM / Qualys / AI',state:'done',
+   detail:'<b>Sources:</b> Microsoft TVM, Qualys, Tenable, AI-driven vulnerability detection.<br><b>AI Actions:</b> NLP parsing of vendor advisories, CVE scoring, CISA KEV lookup, threat intel ingestion.'},
+  {ico:'🎫',label:'ITSM Ticket',sub:'Auto-created',state:'done',
+   detail:'<b>Automatic:</b> ITSM ticket auto-created for every patch ≥ MEDIUM severity.<br><b>Fields:</b> CVE ID, CVSS, EPSS, affected devices, SLA target, ring assignment.'},
+  {ico:'🧠',label:'AI Evaluation',sub:'Risk + Priority',state:'done',
+   detail:'<b>Models:</b> CVSS v3.1 + EPSS v3 + Business Impact score + Device exposure profile.<br><b>Output:</b> AI Risk Score (0-100), SLA classification, deploy/defer recommendation.'},
+  {ico:'✅',label:'AI Approval',sub:'Policy-governed',state:'done',
+   detail:'<b>Auto-Approve:</b> Critical/KEV → immediate. High → 48h SLA. Medium → scheduled. Low → deferred.<br><b>Override:</b> Human can approve, defer, or request exception at any stage.'},
+  {ico:'🧪',label:'Pilot Testing',sub:'5% ring',state:'done',
+   detail:'<b>Ring:</b> 5% device sample (1,200 devices). <b>Checks:</b> App stability, CPU/memory baselines, event logs.<br><b>Pass threshold:</b> ≥95% success rate to promote to Broad ring.'},
+  {ico:'🚀',label:'Broad Deploy',sub:'50% ring — LIVE',state:'active',
+   detail:'<b>Ring:</b> 50% of fleet (12,200 devices). Silent install, intelligent reboot scheduling.<br><b>Monitoring:</b> Real-time health dashboards, anomaly detection active.'},
+  {ico:'🔬',label:'Validation',sub:'Health checks',state:'pending',
+   detail:'<b>Checks:</b> App performance baselines, system stability, event log anomaly scan.<br><b>Auto-rollback:</b> Triggered if regression detected within 24h window.'},
+  {ico:'🏁',label:'Auto-Close',sub:'ITSM + CMDB',state:'pending',
+   detail:'<b>ITSM:</b> Ticket auto-closed on 100% deployment. <b>CMDB:</b> Patch record updated.<br><b>Report:</b> Compliance score updated, audit log written, executive report triggered.'},
+];
+
+function buildPipeline() {
+  document.getElementById('pipelineRow').innerHTML = STEPS.map((s,i) => `
+    <div style="flex:1;text-align:center;position:relative;padding:0 4px;cursor:pointer" onclick="showStep(${i})">
+      ${i<STEPS.length-1?`<div style="position:absolute;top:24px;right:-8px;width:16px;height:2px;background:${s.state==='done'?'var(--c1)':'rgba(0,245,255,.2)'};z-index:2"></div>`:''}
+      <div style="width:52px;height:52px;border-radius:50%;border:2px solid ${s.state==='done'?'var(--c1)':s.state==='active'?'var(--c2)':'var(--txt3)'};
+        display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 8px;
+        background:${s.state==='done'?'rgba(0,245,255,.08)':s.state==='active'?'rgba(0,255,136,.1)':'rgba(255,255,255,.02)'};
+        ${s.state==='active'?'box-shadow:0 0 16px rgba(0,255,136,.4);animation:psPulse 2s ease-in-out infinite':''}
+        transition:all .2s" id="step${i}">${s.ico}</div>
+      <div style="font-size:10px;color:${s.state==='active'?'var(--c2)':s.state==='done'?'var(--txt)':'var(--txt3)'};text-transform:uppercase;letter-spacing:.5px;line-height:1.3">${s.label}</div>
+      <div style="font-size:9px;color:var(--txt3);margin-top:2px;font-family:'JetBrains Mono',monospace">${s.sub}</div>
+      <div style="margin-top:5px"><span class="badge ${s.state==='done'?'b-closed':s.state==='active'?'b-deploying':'b-pending'}" style="font-size:8px">${s.state==='done'?'Done':s.state==='active'?'Live':'Pending'}</span></div>
+    </div>`).join('');
+}
+buildPipeline();
+
+function showStep(i) {
+  const s = STEPS[i];
+  document.getElementById('stepDetailTitle').textContent = `${s.ico} Step ${i+1}: ${s.label}`;
+  document.getElementById('stepDetailBody').innerHTML = `
+    <div style="background:rgba(0,0,0,.3);border-left:3px solid ${s.state==='active'?'var(--c2)':'var(--c1)'};padding:14px 16px;border-radius:0 8px 8px 0;font-size:13px;color:var(--txt2);line-height:1.8">${s.detail}</div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <span class="badge ${s.state==='done'?'b-closed':s.state==='active'?'b-deploying':'b-pending'}">${s.state.toUpperCase()}</span>
+    </div>`;
+  document.getElementById('stepDetail').style.display = 'block';
+}
+
+// Active jobs from ITSM
+const tkts = DB.getOrDefault('tickets', TICKETS_DEFAULT);
+const active = tkts.filter(t=>t.status==='Deploying'||t.status==='Approved').slice(0,5);
+document.getElementById('activeJobs').innerHTML = active.length ? active.map(t=>`
+  <div style="padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;cursor:pointer" onclick="location.href='itsm.html?id=${t.id}'">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--c1)">${t.id}</span>
+      <span class="badge b-${t.status.toLowerCase()}">${t.status}</span>
+    </div>
+    <div style="font-size:12px;margin-bottom:8px">${t.title}</div>
+    <div class="prog-track"><div class="prog-fill" style="width:${t.progress}%;background:${t.status==='Deploying'?'linear-gradient(90deg,var(--c1),var(--c2))':'var(--c2)'}"></div></div>
+    <div style="font-size:10px;color:var(--txt3);margin-top:4px;font-family:'JetBrains Mono',monospace">${t.progress}% complete · ${t.devices?.toLocaleString()||0} devices</div>
+  </div>`).join('') : '<div style="color:var(--txt3);text-align:center;padding:20px;font-family:\'JetBrains Mono\',monospace;font-size:12px">No active deployments</div>';
+
+// Console
+let conLines=[];
+function addCon(type,msg){const ts=new Date().toLocaleTimeString('en-GB',{hour12:false});const cls={sys:'csys',ai:'cai',warn:'cwarn',err:'cerr',ok:'cok'}[type]||'csys';conLines.push(`<div class="cl"><span class="cts">[${ts}]</span> <span class="${cls}">${msg}</span></div>`);const el=document.getElementById('pipeCon');el.innerHTML=conLines.join('')+'<div class="cl"><span class="cur">█</span></div>';el.scrollTop=el.scrollHeight;}
+function clearCon(){conLines=[];document.getElementById('pipeCon').innerHTML='<div class="cl"><span class="cur">█</span></div>';}
+const boot=[[200,'sys','PatchIQ Pipeline Engine initialized...'],[600,'ok','✅ 24,381 endpoints connected'],[1000,'ai','🧠 Ring topology: Pilot(5%) → Early(15%) → Broad(50%) → Enterprise'],[1500,'warn','⚠ 47 CRITICAL CVEs in queue — 3 actively deploying'],[2000,'ok','✅ Pipeline LIVE — monitoring all ring deployments']];
+boot.forEach(([t,type,msg])=>setTimeout(()=>addCon(type,msg),t));
+const pSim=[['sys','New CVE detected — ingesting from NVD API...'],['ai','🧬 NLP parsing vendor advisory...'],['ai','🧠 AI Risk Score: CVSS(9.1) + EPSS(74%) → Risk: 92'],['ok','✅ Auto-approved per CRITICAL policy'],['sys','ITSM ticket INC-AI-'+Date.now().toString().slice(-5)+' auto-created'],['sys','Deploying to Pilot ring (1,200 devices)...'],['ok','✅ Pilot: 98.8% success — promoting to Broad ring'],['sys','Broad ring deploying (12,200 devices) silently...'],['ok','✅ Health checks passed. Deployment complete. Ticket auto-closed.']];
+const rSim=[['warn','⚠ Anomaly: CPU spike on 6 devices post-patch'],['ai','🧠 Event log analysis: 2 app crashes detected'],['err','❌ Regression confirmed — triggering self-healing rollback'],['sys','Restoring previous snapshot (T-2h)...'],['ok','✅ Rollback complete. 6 devices restored and stable.'],['ai','🤖 Root cause logged. Patch quarantined for vendor review.']];
+let simI=0;
+function simPatch(){simI=0;addCon('sys','─── Patch Simulation Started ─────');const r=()=>{if(simI>=pSim.length)return;const[t,m]=pSim[simI++];addCon(t,m);setTimeout(r,700+Math.random()*400)};r();}
+function simRollback(){simI=0;addCon('warn','─── Rollback Simulation ─────────');const r=()=>{if(simI>=rSim.length)return;const[t,m]=rSim[simI++];addCon(t,m);setTimeout(r,800+Math.random()*300)};r();}
+</script>
+</body>
+</html>

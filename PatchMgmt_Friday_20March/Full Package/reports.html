@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatchIQ — Reports</title>
+<link rel="stylesheet" href="shared.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<nav class="topbar">
+  <a href="index.html" class="logo"><span class="logo-ico">🛡️</span>PATCH<span>IQ</span></a>
+  <div class="nav">
+    <a href="index.html">Dashboard</a><a href="endpoints.html">Endpoints</a>
+    <a href="cve.html">CVE Intel</a><a href="itsm.html">ITSM Tickets</a>
+    <a href="advisor.html">AI Advisor</a><a href="pipeline.html">Pipeline</a>
+    <a href="compliance.html">Compliance</a><a href="policies.html">Policies</a>
+    <a href="reports.html" class="active">Reports</a>
+  </div>
+  <div class="topbar-right"><div class="live-dot"></div><span class="clk" id="clk"></span>
+    <button class="btn btn-p btn-sm" onclick="exportAll()">⬇ Export All Reports</button>
+  </div>
+</nav>
+<div class="page">
+  <div class="page-hdr">
+    <div class="page-hdr-left">
+      <div class="page-breadcrumb"><a href="index.html">Dashboard</a> › Reports</div>
+      <h1 class="page-title">Reports &amp; <em>Scorecard</em></h1>
+      <p class="page-subtitle">Executive dashboards, patch velocity, SLA performance, audit logs · Export to CSV</p>
+    </div>
+    <button class="btn btn-p btn-sm" onclick="exportAll()">⬇ Export All</button>
+  </div>
+
+  <!-- Executive KPIs -->
+  <div class="kpi-grid" style="margin-bottom:24px" id="repKPIs"></div>
+
+  <!-- Charts -->
+  <div class="g2" style="margin-bottom:22px">
+    <div class="card">
+      <div class="section-title">📊 12-Month Compliance & Risk Score</div>
+      <div style="height:260px"><canvas id="execChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="section-title">🔄 Patch Category Breakdown</div>
+      <div style="height:240px"><canvas id="catChart"></canvas></div>
+    </div>
+  </div>
+  <div class="g3" style="margin-bottom:22px">
+    <div class="card">
+      <div class="section-title">⚡ Patch Velocity (Monthly)</div>
+      <div style="height:180px"><canvas id="velChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="section-title">❌ Failure & Rollback Rate</div>
+      <div style="height:180px"><canvas id="failChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="section-title">🏆 Top Patched Products</div>
+      <div style="height:180px"><canvas id="topChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Exception Report -->
+  <div class="card" style="margin-bottom:22px">
+    <div class="section-title" style="justify-content:space-between">
+      <span>🔒 Exception & Deferred CVEs</span>
+      <button class="btn btn-g btn-xs" onclick="location.href='cve.html?filter=Deferred'">View All →</button>
+    </div>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr><th>CVE ID</th><th>Product</th><th>Severity</th><th>Deferred Since</th><th>AI Risk</th><th>Reason</th></tr></thead>
+        <tbody id="exceptBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Audit Log -->
+  <div class="card">
+    <div class="section-title">📝 Immutable Audit Log — Last 24h</div>
+    <div class="console" style="height:200px" id="auditLog"></div>
+  </div>
+</div>
+<footer class="footer">🛡️ <span>PatchIQ Enterprise</span> · Reports & Scorecard</footer>
+<script src="shared.js"></script>
+<script>
+startClock('clk');
+Chart.defaults.color='#6a9db8';Chart.defaults.font.family="'JetBrains Mono',monospace";Chart.defaults.font.size=10.5;
+const cves=DB.getOrDefault('cves',CVE_DEFAULT);const tkts=DB.getOrDefault('tickets',TICKETS_DEFAULT);const eps=DB.getOrDefault('endpoints',ENDPOINTS_DEFAULT);
+
+// KPIs
+const patched=eps.filter(e=>e.status==='Patched').length;
+const compliance=Math.round(patched/eps.length*100);
+const critical=cves.filter(c=>c.sev==='CRITICAL').length;
+const closed=tkts.filter(t=>t.status==='Closed').length;
+document.getElementById('repKPIs').innerHTML=[
+  {ico:'✅',v:compliance+'%',l:'Overall Compliance',c:'var(--c2)'},
+  {ico:'🔴',v:critical,l:'Critical CVEs',c:'var(--c3)'},
+  {ico:'⚡',v:'1,847',l:'Patches This Month',c:'var(--c4)'},
+  {ico:'🏁',v:closed,l:'Tickets Closed',c:'var(--c2)'},
+  {ico:'⏱️',v:'2.4h',l:'Avg Time-to-Patch',c:'var(--c5)'},
+  {ico:'🤖',v:'99.1%',l:'AI Auto-Approval',c:'var(--c6)'},
+  {ico:'📉',v:'82%',l:'Risk Reduction',c:'var(--c2)'},
+  {ico:'🔁',v:'3',l:'Auto-Rollbacks',c:'var(--c1)'},
+].map(k=>`<div class="kpi-card" style="padding:16px;text-align:center">
+  <span style="font-size:22px">${k.ico}</span>
+  <div style="font-family:'Orbitron',monospace;font-size:22px;font-weight:700;color:${k.c}">${k.v}</div>
+  <div style="font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px">${k.l}</div>
+</div>`).join('');
+
+new Chart(document.getElementById('execChart'),{type:'line',data:{
+  labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Mar'],
+  datasets:[
+    {label:'Compliance %',data:[78,80,82,83,85,86,87,88,90,91,93,94],borderColor:'#00f5ff',backgroundColor:'rgba(0,245,255,.05)',fill:true,tension:.4,yAxisID:'y'},
+    {label:'Risk Score',data:[72,68,65,61,57,52,48,44,40,36,32,28],borderColor:'#ff2d55',backgroundColor:'rgba(255,45,85,.04)',fill:true,tension:.4,yAxisID:'y'},
+    {label:'Patches (00s)',data:[8,9,12,10,14,16,18,20,22,24,28,32],borderColor:'#00ff88',tension:.4,yAxisID:'y2'},
+  ]
+},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}},y2:{position:'right',grid:{display:false},ticks:{callback:v=>v*100}}}}});
+
+new Chart(document.getElementById('catChart'),{type:'doughnut',data:{
+  labels:['Security Patches','OS Updates','App Patches','On-Demand','Rollbacks','Compliance'],
+  datasets:[{data:[35,28,18,10,4,5],backgroundColor:['rgba(255,45,85,.85)','rgba(0,245,255,.85)','rgba(0,255,136,.8)','rgba(255,140,0,.8)','rgba(189,147,249,.8)','rgba(255,215,0,.8)'],borderWidth:0,hoverOffset:8}]
+},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right'}},cutout:'60%'}});
+
+new Chart(document.getElementById('velChart'),{type:'bar',data:{
+  labels:['Oct','Nov','Dec','Jan','Feb','Mar'],
+  datasets:[{label:'Patches/Month',data:[8200,9400,12000,14800,18200,22400],backgroundColor:['rgba(0,245,255,.4)','rgba(0,245,255,.5)','rgba(0,245,255,.6)','rgba(0,245,255,.7)','rgba(0,245,255,.85)','#00f5ff'],borderRadius:5}]
+},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k'}}}}});
+
+new Chart(document.getElementById('failChart'),{type:'line',data:{
+  labels:['Oct','Nov','Dec','Jan','Feb','Mar'],
+  datasets:[
+    {label:'Failure %',data:[4.2,3.8,3.1,2.6,2.0,1.4],borderColor:'#ff2d55',backgroundColor:'rgba(255,45,85,.07)',fill:true,tension:.4},
+    {label:'Rollback %',data:[1.8,1.5,1.2,0.9,0.7,0.5],borderColor:'#ff8c00',backgroundColor:'rgba(255,140,0,.05)',fill:true,tension:.4},
+  ]
+},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{ticks:{callback:v=>v+'%'}}}}});
+
+new Chart(document.getElementById('topChart'),{type:'bar',data:{
+  labels:['Win Kernel','Chrome','Office 365','Linux Kernel','Adobe'],
+  datasets:[{label:'Patches',data:[4821,12440,8920,630,2100],backgroundColor:['#ff2d55','#ff8c00','#00f5ff','#00ff88','#bd93f9'],borderRadius:5}]
+},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}}}});
+
+// Exceptions
+const deferred = cves.filter(c=>c.status==='Deferred');
+document.getElementById('exceptBody').innerHTML = deferred.length ? deferred.map(c=>`<tr class="row-link" onclick="location.href='cve.html?id=${c.id}'">
+  <td style="color:var(--c1);font-family:'JetBrains Mono',monospace;font-size:11px">${c.id}</td>
+  <td>${c.prod}</td>
+  <td><span class="badge b-${c.sev.toLowerCase()}">${c.sev}</span></td>
+  <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt2)">${c.published||'N/A'}</td>
+  <td style="color:${riskColor(c.risk)};font-family:'Orbitron',monospace;font-weight:700">${c.risk}</td>
+  <td style="font-size:12px;color:var(--txt2)">EPSS ${c.epss}% below threshold · Scheduled for next cycle</td>
+</tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--txt3);padding:20px;font-family:\'JetBrains Mono\',monospace">No deferred CVEs</td></tr>';
+
+// Audit
+const auditEntries=[
+  {t:'ok',m:'INC-2025-04821 · 4,821 devices patched · SUCCESS · CMDB updated'},
+  {t:'ai',m:'AI approved CVE-2025-0847 (Risk:97) · Auto-deploy initiated'},
+  {t:'sys',m:'Ring promoted: Pilot→Broad for CVE-2025-1234 (98.2% pilot pass)'},
+  {t:'warn',m:'SLA alert: CVE-2025-5001 approaching 4h critical SLA'},
+  {t:'ok',m:'CVE-2025-4002 deployment closed · INC-2025-04410 auto-closed'},
+  {t:'ai',m:'NLP parsed 8 vendor advisories · 3 new CVEs scored and queued'},
+  {t:'sys',m:'Self-healing triggered · 3 devices restored to known-good snapshot'},
+  {t:'ok',m:'Monthly compliance report generated: 94.2% overall score'},
+  {t:'sys',m:'CMDB auto-sync: 1,847 patch records updated successfully'},
+  {t:'warn',m:'CVE-2025-4482 deferred · EPSS 22% below 30% escalation threshold'},
+];
+const ts=()=>new Date().toLocaleTimeString('en-GB',{hour12:false});
+const aEl=document.getElementById('auditLog');
+aEl.innerHTML=auditEntries.map(e=>`<div class="cl"><span class="cts">[${ts()}]</span> <span class="c${e.t==='ok'?'ok':e.t==='ai'?'ai':e.t==='warn'?'warn':'sys'}">${e.m}</span></div>`).join('');
+
+function exportAll() {
+  const rows=[['Type','ID','Detail','Value'],
+    ...eps.map(e=>['Endpoint',e.id,e.name+' ('+e.os+')',e.status]),
+    ...cves.map(c=>['CVE',c.id,c.prod+' CVSS:'+c.cvss,'Risk:'+c.risk]),
+    ...tkts.map(t=>['Ticket',t.id,t.title,t.status+' '+t.progress+'%']),
+  ];
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n'));
+  a.download='PatchIQ_Full_Report.csv'; a.click();
+  showToast('✅ Full report exported!','success');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PatchIQ — Compliance</title>
+<link rel="stylesheet" href="shared.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<nav class="topbar">
+  <a href="index.html" class="logo"><span class="logo-ico">🛡️</span>PATCH<span>IQ</span></a>
+  <div class="nav">
+    <a href="index.html">Dashboard</a><a href="endpoints.html">Endpoints</a>
+    <a href="cve.html">CVE Intel</a><a href="itsm.html">ITSM Tickets</a>
+    <a href="advisor.html">AI Advisor</a><a href="pipeline.html">Pipeline</a>
+    <a href="compliance.html" class="active">Compliance</a><a href="policies.html">Policies</a><a href="reports.html">Reports</a>
+  </div>
+  <div class="topbar-right"><div class="live-dot"></div><span class="clk" id="clk"></span></div>
+</nav>
+<div class="page">
+  <div class="page-hdr">
+    <div class="page-hdr-left">
+      <div class="page-breadcrumb"><a href="index.html">Dashboard</a> › Compliance</div>
+      <h1 class="page-title">Compliance <em>Dashboard</em></h1>
+      <p class="page-subtitle">Live compliance scores by platform, department & SLA · Click bars to drill into endpoints</p>
+    </div>
+    <a href="reports.html" class="btn btn-g btn-sm">View Reports →</a>
+  </div>
+
+  <!-- Platform Compliance -->
+  <div class="g2" style="margin-bottom:22px">
+    <div class="card">
+      <div class="section-title">🏢 Compliance by Platform — Click to filter endpoints</div>
+      <div id="platGauges" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="section-title">📊 Compliance Radar</div>
+      <div style="height:280px"><canvas id="radarChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Dept compliance -->
+  <div class="card" style="margin-bottom:22px">
+    <div class="section-title">🏛️ Compliance by Department — Click to view team endpoints</div>
+    <div id="deptTable"></div>
+  </div>
+
+  <!-- SLA -->
+  <div class="g2" style="margin-bottom:22px">
+    <div class="card">
+      <div class="section-title">⚠️ SLA Breach Risk</div>
+      <div style="height:240px"><canvas id="slaBreachChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="section-title">📉 Vulnerability Exposure Trend</div>
+      <div style="height:240px"><canvas id="expChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Heatmap -->
+  <div class="card">
+    <div class="section-title">🗓️ 90-Day Patch Activity Heatmap</div>
+    <div id="heatmap" style="margin-top:10px"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:10px;color:var(--txt3);font-family:'JetBrains Mono',monospace">
+      Less
+      <div style="display:flex;gap:2px">
+        <div style="width:12px;height:12px;background:rgba(0,245,255,.07);border-radius:2px"></div>
+        <div style="width:12px;height:12px;background:rgba(0,245,255,.2);border-radius:2px"></div>
+        <div style="width:12px;height:12px;background:rgba(0,245,255,.4);border-radius:2px"></div>
+        <div style="width:12px;height:12px;background:rgba(0,245,255,.65);border-radius:2px"></div>
+        <div style="width:12px;height:12px;background:var(--c1);border-radius:2px"></div>
+      </div>
+      More patches deployed
+    </div>
+  </div>
+</div>
+<footer class="footer">🛡️ <span>PatchIQ Enterprise</span> · Compliance Dashboard</footer>
+<script src="shared.js"></script>
+<script>
+startClock('clk');
+Chart.defaults.color='#6a9db8'; Chart.defaults.font.family="'JetBrains Mono',monospace"; Chart.defaults.font.size=10.5;
+const eps = DB.getOrDefault('endpoints', ENDPOINTS_DEFAULT);
+
+// Platform gauges
+const platforms=[
+  {l:'Windows Endpoints',v:94,c:'#00f5ff',f:'Windows'},
+  {l:'Linux Servers',v:93,c:'#00ff88',f:'Linux'},
+  {l:'macOS Devices',v:90,c:'#ff8c00',f:'macOS'},
+  {l:'Mobile (iOS/Android)',v:86,c:'#bd93f9',f:'Mobile'},
+  {l:'IoT / Embedded',v:72,c:'#ffd700',f:'IoT'},
+  {l:'Third-Party Apps',v:88,c:'#00f5ff',f:''},
+];
+document.getElementById('platGauges').innerHTML = platforms.map(p=>`
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;cursor:pointer" onclick="location.href='endpoints.html?filter=${encodeURIComponent(p.f)}'" title="View ${p.l} endpoints">
+    <span style="font-size:12px;color:var(--txt2);min-width:190px">${p.l}</span>
+    <div style="flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:8px;overflow:hidden">
+      <div style="width:${p.v}%;height:100%;background:linear-gradient(90deg,${p.c}80,${p.c});border-radius:8px;transition:width 1.2s ease"></div>
+    </div>
+    <span style="font-family:'Orbitron',monospace;font-size:14px;font-weight:700;color:${p.c};min-width:44px;text-align:right">${p.v}%</span>
+    <span style="font-size:10px;color:var(--txt3)">→</span>
+  </div>`).join('');
+
+// Dept compliance
+const depts=['Finance','HR','Engineering','IT','DevOps','Sales','Management','Legal','Design','Analytics','Security'];
+const deptData = depts.map(d => {
+  const dEps = eps.filter(e=>e.dept===d);
+  const patched = dEps.filter(e=>e.status==='Patched').length;
+  const pct = dEps.length ? Math.round(patched/dEps.length*100) : 0;
+  const avgRisk = dEps.length ? Math.round(dEps.reduce((s,e)=>s+e.risk,0)/dEps.length) : 0;
+  return {d, total:dEps.length, patched, pct, avgRisk};
+});
+document.getElementById('deptTable').innerHTML = `
+  <div class="data-table-wrap"><table class="data-table">
+    <thead><tr><th>Department</th><th>Total Devices</th><th>Patched</th><th>Compliance %</th><th>Avg Risk</th><th>Status</th></tr></thead>
+    <tbody>${deptData.map(d=>`<tr class="row-link" onclick="location.href='endpoints.html?filter=${d.d}'">
+      <td style="font-weight:600">${d.d}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${d.total}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${d.patched}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:80px;height:6px;background:rgba(255,255,255,.07);border-radius:6px;overflow:hidden"><div style="width:${d.pct}%;height:100%;background:${d.pct>=90?'#00ff88':d.pct>=70?'#ffd700':'#ff2d55'}"></div></div>
+          <span style="font-family:'Orbitron',monospace;font-size:13px;font-weight:700;color:${d.pct>=90?'#00ff88':d.pct>=70?'#ffd700':'#ff2d55'}">${d.pct}%</span>
+        </div>
+      </td>
+      <td style="color:${riskColor(d.avgRisk)};font-family:'JetBrains Mono',monospace">${d.avgRisk}</td>
+      <td><span class="badge ${d.pct>=90?'b-approved':d.pct>=70?'b-pending':'b-critical'}">${d.pct>=90?'Compliant':d.pct>=70?'At Risk':'Non-Compliant'}</span></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+
+// Radar
+new Chart(document.getElementById('radarChart'),{type:'radar',data:{
+  labels:['Windows','Linux','macOS','Mobile','IoT','3rd-Party'],
+  datasets:[
+    {label:'Compliance %',data:[94,93,90,86,72,88],borderColor:'#00f5ff',backgroundColor:'rgba(0,245,255,.1)',pointBackgroundColor:'#00f5ff'},
+    {label:'SLA Target',data:[95,95,95,90,80,90],borderColor:'#00ff88',backgroundColor:'rgba(0,255,136,.05)',borderDash:[5,5],pointBackgroundColor:'#00ff88'},
+  ]
+},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{r:{min:60,max:100,ticks:{callback:v=>v+'%'},grid:{color:'rgba(0,245,255,.09)'}}}}});
+
+new Chart(document.getElementById('slaBreachChart'),{type:'bar',data:{
+  labels:['Windows','Linux','macOS','iOS','Android','IoT'],
+  datasets:[{label:'SLA Breach Risk %',data:[4,5,8,12,13,22],backgroundColor:['#00ff88','#00ff88','#ffd700','#ff8c00','#ff8c00','#ff2d55'],borderRadius:6}]
+},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>v+'%'}}}}});
+
+new Chart(document.getElementById('expChart'),{type:'line',data:{
+  labels:["Q1'24","Q2'24","Q3'24","Q4'24","Q1'25"],
+  datasets:[
+    {label:'Critical Open',data:[280,210,155,98,47],borderColor:'#ff2d55',backgroundColor:'rgba(255,45,85,.07)',fill:true,tension:.4},
+    {label:'High Open',data:[540,420,310,200,128],borderColor:'#ff8c00',backgroundColor:'rgba(255,140,0,.05)',fill:true,tension:.4},
+  ]
+},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}}}});
+
+// Heatmap
+const hg = document.createElement('div');
+hg.style.cssText='display:grid;grid-template-columns:repeat(30,1fr);gap:2px';
+const v=['rgba(0,245,255,.06)','rgba(0,245,255,.18)','rgba(0,245,255,.35)','rgba(0,245,255,.6)','#00f5ff'];
+for(let i=0;i<90;i++){const d=document.createElement('div');const r=Math.random();d.style.cssText=`height:14px;border-radius:2px;background:${r>.85?v[4]:r>.65?v[3]:r>.45?v[2]:r>.25?v[1]:v[0]}`;d.title=`Day ${i+1}: ${Math.round(r*480)} patches`;hg.appendChild(d);}
+document.getElementById('heatmap').appendChild(hg);
+</script>
+</body>
+</html>
