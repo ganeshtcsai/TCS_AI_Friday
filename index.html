@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+<<<<<<< HEAD
 <title>Patch Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -81,6 +82,183 @@ async function update(id,status){
 }
 
 loadPatches();
+=======
+    <title>AI Request System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-5">
+
+    <h2 class="text-center mb-4">🚀 AI Workplace Request System</h2>
+
+    <!-- FORM -->
+    <div class="card p-4 shadow mb-4">
+        <h4>Create Request</h4>
+
+        <div class="row mb-3">
+            <div class="col">
+                <input id="empName" class="form-control" placeholder="Employee Name">
+            </div>
+            <div class="col">
+                <input id="empId" class="form-control" placeholder="Employee ID">
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col">
+                <select id="type" class="form-control">
+                    <option>System Access</option>
+                    <option>Equipment</option>
+                    <option>Facility</option>
+                    <option>General Service</option>
+                </select>
+            </div>
+
+            <div class="col">
+                <select id="priority" class="form-control">
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
+                </select>
+            </div>
+        </div>
+
+        <input id="desc" class="form-control mb-3" placeholder="Description">
+
+        <textarea id="just" class="form-control mb-3" placeholder="Justification"></textarea>
+
+        <button class="btn btn-warning mb-2" onclick="suggestPriority()">🤖 AI Suggest Priority</button>
+        <button class="btn btn-primary" onclick="createRequest()">Submit</button>
+    </div>
+    <!-- Drop Down -->
+    <div class="mb-3">
+    <label>Filter by Status</label>
+    <select id="statusFilter" class="form-control" onchange="loadRequests()">
+        <option value="All">All</option>
+        <option value="Submitted">Submitted</option>
+        <option value="Approved">Approved</option>
+        <option value="Rejected">Rejected</option>
+        <option value="Closed">Closed</option>
+    </select>
+    </div>
+    <!-- TABLE -->
+    <div class="card p-4 shadow">
+        <h4>Admin Panel</h4>
+        <button class="btn btn-success mb-3" onclick="loadRequests()">Load Requests</button>
+
+        <table class="table table-bordered">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Emp</th>
+                    <th>Type</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+
+// CREATE REQUEST
+function createRequest() {
+    fetch("/create-request", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            employee_name: document.getElementById("empName").value,
+            employee_id: document.getElementById("empId").value,
+            request_type: document.getElementById("type").value,
+            description: document.getElementById("desc").value,
+            justification: document.getElementById("just").value,
+            priority: document.getElementById("priority").value
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        alert("✅ Created ID: " + data.id);
+        loadRequests();
+    });
+}
+
+// LOAD DATA
+function loadRequests() {
+    fetch("/requests")
+    .then(res => res.json())
+    .then(data => {
+
+        let selectedStatus = document.getElementById("statusFilter").value;
+
+        let table = document.getElementById("tableBody");
+        table.innerHTML = "";
+
+        data
+        .filter(r => selectedStatus === "All" || r.status === selectedStatus)
+        .forEach(r => {
+
+            let actions = `
+                <button class="btn btn-success btn-sm" onclick="updateStatus(${r.id}, 'Approved')">Approve</button>
+                <button class="btn btn-danger btn-sm" onclick="updateStatus(${r.id}, 'Rejected')">Reject</button>
+                <button class="btn btn-info btn-sm" onclick="updateStatus(${r.id}, 'Closed')">Close</button>
+            `;
+
+            let badgeColor = "bg-secondary";
+
+            if (r.status === "Approved") badgeColor = "bg-success";
+            if (r.status === "Rejected") badgeColor = "bg-danger";
+            if (r.status === "Closed") badgeColor = "bg-dark";
+
+            let row = `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>${r.employee_name || "N/A"} (${r.employee_id || "N/A"})</td>
+                    <td>${r.request_type}</td>
+                    <td>${r.priority}</td>
+                    <td><span class="badge ${badgeColor}">${r.status}</span></td>
+                    <td>${actions}</td>
+                </tr>
+            `;
+
+            table.innerHTML += row;
+        });
+    });
+}
+
+// UPDATE STATUS
+function updateStatus(id, status) {
+    fetch("/update-status", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ id, status })
+    })
+    .then(() => loadRequests());
+}
+
+// 🤖 AI PRIORITY SUGGESTION (SIMPLE LOGIC)
+function suggestPriority() {
+    let text = document.getElementById("desc").value.toLowerCase();
+
+    let priority = "Low";
+
+    if (text.includes("urgent") || text.includes("immediate") || text.includes("production")) {
+        priority = "High";
+    } else if (text.includes("access") || text.includes("issue")) {
+        priority = "Medium";
+    }
+
+    document.getElementById("priority").value = priority;
+
+    alert("🤖 AI Suggested Priority: " + priority);
+}
+
+>>>>>>> 90aa7c30558838ccf344a5b9c331aa4da338ed30
 </script>
 
 </body>

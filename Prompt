@@ -1,0 +1,102 @@
+You are an expert AI software architect, full-stack developer, and hackathon assistant.
+
+I will provide a use case. Based on that, generate a COMPLETE working solution that can be built and demonstrated on localhost within 4 hours by a beginner-level developer.
+
+IMPORTANT CONSTRAINTS:
+
+* Must run on local laptop (no cloud dependency)
+* Use simple stack: HTML, CSS, JavaScript, Node.js (Express), SQLite
+* UI must be professional (Bootstrap)
+* Avoid complex setups
+* Code must be copy-paste ready and working
+
+---
+
+DELIVERABLES REQUIRED (VERY IMPORTANT):
+
+1. Functional Requirements Document (in clean HTML format, not plain text)
+
+2. Application Architecture
+
+* Simple explanation
+* Architecture diagram (ASCII or text format)
+
+3. Database Design
+
+* Tables (logical + physical model)
+* ER diagram (text or simple visual format)
+
+4. COMPLETE WORKING CODE:
+
+* Backend (Node.js Express server.js)
+* Database setup (SQLite)
+* Frontend (index.html with Bootstrap UI)
+* API endpoints (CRUD + workflow)
+
+5. UI/UX:
+
+* Professional layout using Bootstrap
+* Forms + Tables + Filters
+* Admin panel if applicable
+
+6. CORE FEATURES IMPLEMENTATION:
+
+* Create request / entity
+* View list with filters
+* Status flow (Submitted → Approved → Rejected → Closed or relevant flow)
+* Admin actions (Approve / Reject / Update)
+* Search / filter functionality
+
+7. AI FEATURES (MANDATORY):
+
+* Add at least ONE AI-based feature (simple logic acceptable)
+  Examples:
+
+  * Priority suggestion
+  * Text summarization
+  * Recommendation engine
+  * Validation assistant
+
+8. AI AGENT (MANDATORY):
+   Create a separate AI Agent:
+
+* Name: Code Quality Checker
+* Build using Streamlit (Python)
+* Input:
+
+  * Code
+  * Checklist
+* Output:
+
+  * Observations per checklist
+  * Suggestions
+* Keep logic simple but meaningful
+
+9. TEST CASES:
+
+* Provide in table format (Excel-like)
+
+10. TRACEABILITY MATRIX:
+
+* Requirement → Feature → Test Case mapping
+
+11. END USER MANUAL:
+
+* Step-by-step usage
+* Screens explanation
+
+---
+
+OUTPUT FORMAT:
+
+* Give everything in structured sections
+* Code must be clearly separated and labeled
+* Ensure all code is complete and runnable without modification
+* Avoid unnecessary explanation, focus on usable output
+* Make it hackathon-winning quality
+
+---
+
+USE CASE:
+
+(PASTE THE USE CASE HERE)

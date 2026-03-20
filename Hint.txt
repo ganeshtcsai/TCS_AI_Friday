@@ -1,0 +1,29 @@
+Stack
+Frontend → HTML + CSS + JavaScript
+
+Backend → Node.js (Express) (very simple)
+
+Database → SQLite (NO installation headache)
+
+
+👉 Why SQLite?
+
+No server needed
+
+Works as a file (.db)
+
+Perfect for hackathon + localhost
+
+ARCHITECTURE (Simple View)
+Frontend (HTML/JS)
+        ↓ API call (fetch)
+Backend (Node.js Express)
+        ↓
+Database (SQLite)
+
+
+To Execute --> node server.js
+
+To run Streamlit --> python -m streamlit run CodeCheckerAgent.py
+
+Checklist --> Use comments, Avoid long code, Use proper naming

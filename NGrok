@@ -1,0 +1,66 @@
+WHY YOU ARE SEEING THIS ERROR
+'ngrok' is not recognized...
+
+👉 Means:
+
+ngrok is not installed, OR
+
+Installed but not added to PATH
+
+🚀 ✅ SIMPLE FIX (STEP BY STEP)
+🔧 STEP 1: Download ngrok
+
+Go here:
+👉 https://ngrok.com/download
+
+Choose:
+👉 Windows (64-bit)
+
+🔧 STEP 2: Extract ZIP
+
+You’ll get:
+
+ngrok.exe
+
+👉 Extract it to any folder
+Example:
+
+C:\ngrok\
+🔧 STEP 3: Run from that folder
+
+Open Command Prompt in that folder:
+
+cd C:\ngrok
+
+Then run:
+
+ngrok http 3000
+✅ DONE 🎉
+
+You will see:
+
+Forwarding https://xxxx.ngrok.io -> http://localhost:3000
+
+👉 Share this link with your team
+
+⚡ QUICK SHORTCUT (NO INSTALL)
+
+👉 Easiest way:
+
+Place ngrok.exe inside your project folder:
+
+C:\Users\ganes\ai-hackathon-app
+
+Run:
+
+ngrok http 3000
+⚠️ IMPORTANT (FIRST TIME ONLY)
+
+ngrok may ask for login/auth token:
+
+👉 Go to:
+https://dashboard.ngrok.com
+
+Copy token and run:
+
+ngrok config add-authtoken YOUR_TOKEN
